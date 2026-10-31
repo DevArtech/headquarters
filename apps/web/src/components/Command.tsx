@@ -130,9 +130,7 @@ export function Command() {
 
       {activity && !panel && !decision && <div className="activity">{activity}</div>}
       {caption && !panel && !decision && (
-        <div className={`caption ${streaming ? "live" : ""}`} onClick={() => setPanel("history")} title="Show transcript">
-          {caption}
-        </div>
+        <Caption text={caption} live={!!streaming} onOpen={() => setPanel("history")} />
       )}
 
       <div className="bar">
@@ -229,4 +227,37 @@ function ago(ts: number) {
   if (s < 3600) return `${Math.floor(s / 60)}m`;
   if (s < 86400) return `${Math.floor(s / 3600)}h`;
   return `${Math.floor(s / 86400)}d`;
+}
+
+/**
+ * G.A.R.T.H.'s latest words, in full. Long replies scroll; while a reply streams in, the caption stays
+ * on the newest words unless the operator has scrolled up to read.
+ */
+function Caption({ text, live, onOpen }: { text: string; live: boolean; onOpen: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  const [above, setAbove] = useState(false); // text scrolled out of view above: fade the top edge
+  const [long, setLong] = useState(false); // more than two lines: give it a backing so it reads over the graph
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (pinned.current) el.scrollTop = el.scrollHeight;
+    setAbove(el.scrollTop > 2);
+    setLong(el.scrollHeight > 48);
+  }, [text]);
+  return (
+    <div
+      ref={ref}
+      className={`caption ${live ? "live" : ""} ${above ? "above" : ""} ${long ? "long" : ""}`}
+      onClick={onOpen}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+        setAbove(el.scrollTop > 2);
+      }}
+      title="Show transcript"
+    >
+      {text}
+    </div>
+  );
 }
