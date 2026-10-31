@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { HqToUi } from "@hq/protocol";
+import { synthesize, voiceStatus } from "./voice.js";
 import type { Fleet } from "./fleet.js";
 import type { Garth } from "./garth.js";
 import type { Tasks } from "./tasks.js";
@@ -38,6 +39,19 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
       .callTool(c.req.param("name"), input)
       .then((result) => c.json({ result: result ?? "ok" }))
       .catch((e) => c.json({ error: (e as Error).message }, 400));
+  });
+
+  // G.A.R.T.H.'s neural voice: one sentence in, a WAV file out
+  app.get("/api/tts", (c) => c.json(voiceStatus()));
+  app.post("/api/tts", async (c) => {
+    const { text, voice } = await c.req.json<{ text: string; voice?: string }>();
+    if (!text?.trim()) return c.json({ error: "no text" }, 400);
+    try {
+      const wav = await synthesize(text.slice(0, 1000), voice);
+      return new Response(wav, { headers: { "content-type": "audio/wav", "cache-control": "no-store" } });
+    } catch (e) {
+      return c.json({ error: (e as Error).message }, 503 as 400);
+    }
   });
 
   // performance reports from the UI's ?diag run, appended to data/diag.jsonl

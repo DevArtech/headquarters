@@ -39,12 +39,13 @@ It appears on the graph within a second. Put HQ on a tailnet or VPN rather than 
 ## G.A.R.T.H.
 
 - **Brain**: a persistent Claude Code session on the HQ machine (`apps/hq/src/garth-cc.ts`), working in this repo. Fleet tools reach it through a dependency-free MCP bridge (`apps/hq/bin/mcp-bridge.mjs` → `/api/garth/tools`). The session id is saved in `data/hq.json`, so the conversation survives restarts. Without Claude Code it falls back to the Claude API (`GARTH_BRAIN=api`, needs `ANTHROPIC_API_KEY`).
-- **Voice**: replies stream token by token to the UI and are spoken sentence by sentence with the browser's speech synthesis. Toggle with the speaker button; Esc stops speech.
+- **Voice**: replies stream token by token to the UI and are spoken sentence by sentence by [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), an open-weight neural TTS model running locally on the HQ machine (`apps/hq/src/voice.ts`, `POST /api/tts`). The browser fetches each sentence while the previous one plays and schedules them gaplessly. The model (~330 MB) downloads once on first start. Falls back to the browser's built-in voice if unavailable or with `GARTH_TTS=browser`. Toggle with the speaker button; Esc stops speech.
 - **Self-modification**: G.A.R.T.H. may edit Headquarters, Outposts, the UI, and itself. `pnpm dev` runs HQ under `scripts/supervise.mjs`, which:
   - restarts on changes to `apps/hq`, `apps/outpost`, `packages/protocol`, but waits while G.A.R.T.H. is mid-turn or agents are running on this machine;
   - typechecks first; on failure the old code keeps running and G.A.R.T.H. is sent the errors;
   - if new code from G.A.R.T.H. crashes on boot, stashes just the files it changed (`git stash list`, look for `hq-autorevert`) and restarts on the previous code.
   - `apps/web` changes hot-reload without a restart.
+- Voice settings: `GARTH_VOICE` (default `am_michael`; most natural overall: `af_heart`, `af_bella`), `GARTH_VOICE_SPEED` (default `1.05`).
 - Settings: `GARTH_ALLOWED_TOOLS` (default `mcp__hq Bash Read Edit Write Glob Grep WebSearch WebFetch`), `GARTH_PERMISSION_MODE` (default `acceptEdits`), `GARTH_CC_MODEL`.
 
 ## Harness notes

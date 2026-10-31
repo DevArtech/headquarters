@@ -8,6 +8,7 @@ import { Fleet } from "./fleet.js";
 import { Garth } from "./garth.js";
 import { Tasks } from "./tasks.js";
 import { World } from "./world.js";
+import { loadVoice, voiceConfig } from "./voice.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../..");
@@ -29,7 +30,11 @@ const tasks = new Tasks(world, fleet);
 const garth = new Garth(world, fleet, tasks, { repoRoot, hqApi: `http://127.0.0.1:${port}`, hqToken: token, supervised: supervisor });
 
 const server = startApi({ world, fleet, tasks, garth, port, token, webDist: path.join(repoRoot, "apps/web/dist") });
-server.on("listening", () => toSupervisor({ type: "ready" }));
+server.on("listening", () => {
+  toSupervisor({ type: "ready" });
+  // load the voice model in the background so the first spoken reply isn't delayed
+  if (voiceConfig.enabled) loadVoice().catch(() => {});
+});
 
 // The HQ machine is also a worksite: run an Outpost in-process.
 startOutpost({
