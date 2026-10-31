@@ -103,11 +103,17 @@ export type GarthMessage = z.infer<typeof GarthMessage>;
 export const GarthState = z.enum(["idle", "thinking", "speaking", "alert"]);
 export type GarthState = z.infer<typeof GarthState>;
 
-/** A G.A.R.T.H. channel: its own conversation (and Claude Code session). */
+/** The agent harness G.A.R.T.H. thinks with. Chosen per channel, switchable live. */
+export const GarthBrainKind = z.enum(["claude-code", "codex", "api"]);
+export type GarthBrainKind = z.infer<typeof GarthBrainKind>;
+
+/** A G.A.R.T.H. channel: its own conversation (and harness session). */
 export interface ChannelView {
   id: string;
   name: string;
   state: GarthState;
+  brain: GarthBrainKind;
+  model?: string; // unset = the harness default
   updatedAt: number;
   transcript: GarthMessage[]; // most recent messages
 }
@@ -119,7 +125,7 @@ export interface Snapshot {
   agents: Agent[];
   tasks: Task[];
   notifications: Notification[];
-  garth: { state: GarthState; channels: ChannelView[] }; // channels: most recently active first
+  garth: { state: GarthState; channels: ChannelView[]; brains: GarthBrainKind[] }; // channels: most recently active first; brains: available here
 }
 
 // ───────────────────── Outpost ⇄ HQ wire protocol ─────────────────────

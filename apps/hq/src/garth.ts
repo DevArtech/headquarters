@@ -1,13 +1,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaMessageStreamParams } from "@anthropic-ai/sdk/resources/beta/messages";
 import path from "node:path";
-import type { Task } from "@hq/protocol";
+import { GarthBrainKind, type GarthMessage, type Task } from "@hq/protocol";
 import { which } from "@hq/outpost";
 import { ClaudeCodeBrain, type Sink } from "./garth-cc.js";
+import { CodexBrain } from "./garth-codex.js";
 import { TOOLS, createToolRunner, type ToolRunner } from "./garth-tools.js";
 import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
-import type { World } from "./world.js";
+import type { BrainChoice, World } from "./world.js";
+
+const HARNESS: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", api: "Claude API" };
 
 const PERSONA = `You are G.A.R.T.H. (General Agent for Routing, Tasking & Handoffs), the operator's single point of contact inside Headquarters: a command center for agent harnesses (Claude Code, Codex, shell) running on Outposts (devices) and in the cloud.
 
@@ -30,9 +33,9 @@ Form of address: do not use titles such as "sir" or "ma'am" unless the operator 
 
 How you speak: everything you say is read aloud by a text-to-speech voice and shown as one-line captions. Keep replies to one to three short sentences, polished and natural to hear. No markdown, no bullet lists, no code blocks, no file paths unless asked.`;
 
-function selfModification(repoRoot: string, supervised: boolean) {
+function selfModification(repoRoot: string, supervised: boolean, harness: string) {
   return `
-You run on the Claude Code harness on the Headquarters machine, inside the Headquarters repository at ${repoRoot}. This machine is also the outpost with id "hq-local". You may read and modify this repository, including your own code, with your normal file and shell tools, whenever the operator asks for a change to Headquarters, an Outpost, or yourself.
+You run on the ${harness} harness on the Headquarters machine, inside the Headquarters repository at ${repoRoot}. This machine is also the outpost with id "hq-local". You may read and modify this repository, including your own code, with your normal file and shell tools, whenever the operator asks for a change to Headquarters, an Outpost, or yourself.
 
 Repository map: packages/protocol (shared types), apps/hq (server; you are apps/hq/src/garth*.ts), apps/outpost (device daemon and harness adapters), apps/web (the UI the operator is looking at).
 
@@ -55,6 +58,7 @@ Channels: the operator talks to you in separate channels, each its own conversat
 
 interface Brain {
   turn(text: string, sink: Sink): Promise<void>;
+  warm?(): void;
   stop?(): void;
 }
 
@@ -74,7 +78,17 @@ function nameIfUnnamed(c: { name: string; transcript: Array<{ role: string; text
   changed();
 }
 
-/** Idle Claude Code sessions are shut down after this long and resumed on the next message. */
+/** What a channel's new brain is told about the conversation so far: it doesn't share the old one's memory. */
+function handoff(from: GarthBrainKind, to: GarthBrainKind, transcript: GarthMessage[]) {
+  const lines = transcript
+    .filter((m) => m.role !== "system")
+    .slice(-20)
+    .map((m) => `${m.role === "user" ? "operator" : "you"}: ${m.text.length > 600 ? m.text.slice(0, 600) + "…" : m.text}`);
+  if (!lines.length) return "";
+  return `[context] The operator just moved this channel from the ${HARNESS[from]} harness to you on ${HARNESS[to]}. You don't share that harness's memory, so here is the recent conversation, oldest first:\n${lines.join("\n")}\n[end context]\n\n`;
+}
+
+/** Idle harness sessions are shut down after this long and resumed on the next message. */
 const IDLE_MS = 10 * 60_000;
 
 /**
@@ -84,9 +98,9 @@ const IDLE_MS = 10 * 60_000;
 export class Garth {
   private runtimes = new Map<string, Runtime>();
   private queues = new Map<string, Promise<void>>(); // per-channel turn order
-  private brainKind: "claude-code" | "api" = "api";
+  private handoffs = new Map<string, string>(); // channel → context for its next turn after a brain switch
   private run: ToolRunner;
-  readonly kind: Promise<"claude-code" | "api">;
+  readonly ready: Promise<void>;
 
   constructor(
     private world: World,
@@ -94,8 +108,8 @@ export class Garth {
     tasks: Tasks,
     private opts: { repoRoot: string; hqApi: string; hqToken: string; supervised: boolean },
   ) {
-    this.run = createToolRunner(world, fleet, tasks);
-    this.kind = this.init();
+    this.run = createToolRunner(world, fleet, tasks, { setBrain: (channelId, kind, model) => this.setBrain(channelId, kind, model) });
+    this.ready = this.init();
 
     world.on("task.finished", (task: Task) => {
       if (task.createdBy === "garth" || task.status === "failed") {
@@ -114,42 +128,79 @@ export class Garth {
     return [...this.runtimes.values()].some((r) => r.busy);
   }
 
+  /** Which brains are installed here, preferred first: GARTH_BRAIN, then Claude Code, Codex, the API. */
   private async init() {
-    const want = process.env.GARTH_BRAIN;
-    const hasClaude = !!(await which(process.env.GARTH_CLAUDE_BIN ?? "claude"));
-    const kind = want === "api" || (!want && !hasClaude) ? "api" : "claude-code";
-    this.brainKind = kind;
-    console.log(`[garth] brain: ${kind}`);
-    return kind;
+    const env = process.env;
+    const has = {
+      "claude-code": !!(await which(env.GARTH_CLAUDE_BIN ?? "claude")),
+      codex: !!(await which(env.GARTH_CODEX_BIN ?? "codex")),
+      api: !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN),
+    };
+    const want = GarthBrainKind.safeParse(env.GARTH_BRAIN).data;
+    const order = [...new Set([want, ...GarthBrainKind.options])].filter((k): k is GarthBrainKind => !!k && has[k]);
+    this.world.brains = order.length ? order : ["api"]; // the API brain explains what's missing
+    this.world.changed();
+    console.log(`[garth] brains: ${this.world.brains.join(", ")}`);
   }
 
   /** Start the most recently used channel's session ahead of time so the first reply is fast. */
   async warm() {
-    if ((await this.kind) !== "claude-code") return;
+    await this.ready;
     const recent = [...this.world.channels.values()].sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    if (recent) (this.runtime(recent.id).brain as ClaudeCodeBrain).warm();
+    if (recent) this.runtime(recent.id).brain.warm?.();
+  }
+
+  /**
+   * Move a channel to another brain (and/or model). Takes effect once the channel's current turn is
+   * done; the new brain gets a recap of the conversation. Also becomes the default for new channels.
+   */
+  async setBrain(channelId: string | undefined, kind: GarthBrainKind, model?: string): Promise<BrainChoice> {
+    await this.ready;
+    if (!GarthBrainKind.safeParse(kind).success) throw new Error(`unknown brain "${kind}" (one of: ${GarthBrainKind.options.join(", ")})`);
+    if (!this.world.brains.includes(kind)) throw new Error(`${HARNESS[kind]} isn't available here (available: ${this.world.brains.join(", ")})`);
+    const c = this.world.channel(channelId);
+    const choice: BrainChoice = model?.trim() ? { kind, model: model.trim() } : { kind };
+    const was = this.world.brainOf(c);
+    // channels still on the default keep the brain they have; only new channels follow the new default
+    for (const other of this.world.channels.values()) other.brain ??= this.world.brainOf(other);
+    c.brain = choice;
+    this.world.brainDefault = choice;
+    this.world.changed();
+    if (was.kind === choice.kind && was.model === choice.model) return choice;
+    this.chain(c.id, async () => {
+      const rt = this.runtimes.get(c.id);
+      if (rt) {
+        clearTimeout(rt.idle);
+        rt.brain.stop?.();
+        this.runtimes.delete(c.id);
+      }
+      if (was.kind !== choice.kind) this.handoffs.set(c.id, handoff(was.kind, choice.kind, c.transcript));
+      console.log(`[garth:${c.id}] brain: ${choice.kind}${choice.model ? ` (${choice.model})` : ""}`);
+    });
+    return choice;
   }
 
   private runtime(channelId: string): Runtime {
     let rt = this.runtimes.get(channelId);
     if (rt) return rt;
     const channel = this.world.channel(channelId);
+    const { kind, model } = this.world.brainOf(channel);
+    const harness = {
+      cwd: this.opts.repoRoot,
+      systemPrompt: PERSONA + "\n" + channelGuide(channel.id) + "\n" + selfModification(this.opts.repoRoot, this.opts.supervised, HARNESS[kind]),
+      model,
+      mcpBridge: path.join(this.opts.repoRoot, "apps/hq/bin/mcp-bridge.mjs"),
+      hqApi: this.opts.hqApi,
+      hqToken: this.opts.hqToken,
+      channelId: channel.id,
+    };
+    const saved = () => this.world.changed();
     const brain: Brain =
-      this.brainKind === "api"
-        ? new ApiBrain(this.run, channel.id)
-        : new ClaudeCodeBrain({
-            cwd: this.opts.repoRoot,
-            systemPrompt: PERSONA + "\n" + channelGuide(channel.id) + "\n" + selfModification(this.opts.repoRoot, this.opts.supervised),
-            sessionId: channel.sessionId,
-            onSession: (id) => {
-              channel.sessionId = id;
-              this.world.changed();
-            },
-            mcpBridge: path.join(this.opts.repoRoot, "apps/hq/bin/mcp-bridge.mjs"),
-            hqApi: this.opts.hqApi,
-            hqToken: this.opts.hqToken,
-            channelId: channel.id,
-          });
+      kind === "claude-code"
+        ? new ClaudeCodeBrain({ ...harness, sessionId: channel.sessionId, onSession: (id) => ((channel.sessionId = id), saved()) })
+        : kind === "codex"
+          ? new CodexBrain({ ...harness, threadId: channel.codexThread, onThread: (id) => ((channel.codexThread = id), saved()) })
+          : new ApiBrain(this.run, channel.id, model);
     rt = { brain, busy: false };
     this.runtimes.set(channel.id, rt);
     return rt;
@@ -189,9 +240,18 @@ export class Garth {
   }
 
   private enqueue(channelId: string, text: string) {
+    this.chain(channelId, async () => {
+      const context = this.handoffs.get(channelId);
+      this.handoffs.delete(channelId);
+      await this.turn(channelId, this.runtime(channelId), (context ?? "") + text);
+    });
+  }
+
+  /** Run after everything already queued for this channel. */
+  private chain(channelId: string, fn: () => Promise<void>) {
     const next = (this.queues.get(channelId) ?? Promise.resolve()).then(async () => {
-      await this.kind; // brain type is known before the channel's runtime is created
-      await this.turn(channelId, this.runtime(channelId), text);
+      await this.ready; // installed brains are known before the channel's runtime is created
+      await fn();
     });
     this.queues.set(channelId, next.catch(() => {}));
   }
@@ -224,7 +284,7 @@ export class Garth {
       nameIfUnnamed(this.world.channel(channelId), () => this.world.changed());
       rt.busy = false;
       this.world.emit("garth.busy", this.busy);
-      // free idle Claude Code processes; the session resumes on the next message
+      // free idle harness processes; the session resumes on the next message
       rt.idle = setTimeout(() => {
         if (rt.busy) return;
         rt.brain.stop?.();
@@ -238,9 +298,11 @@ export class Garth {
 class ApiBrain implements Brain {
   private client = new Anthropic();
   private history: Anthropic.Beta.BetaMessageParam[] = [];
-  private model = process.env.GARTH_MODEL ?? "claude-opus-5-5";
+  private model: string;
 
-  constructor(private run: ToolRunner, private channelId: string) {}
+  constructor(private run: ToolRunner, private channelId: string, model?: string) {
+    this.model = model ?? process.env.GARTH_MODEL ?? "claude-opus-5-5";
+  }
 
   async turn(text: string, sink: Sink) {
     if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {

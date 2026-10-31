@@ -4,7 +4,7 @@ import { Hono } from "hono";
 import fs from "node:fs";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
-import type { HqToUi } from "@hq/protocol";
+import type { GarthBrainKind, HqToUi } from "@hq/protocol";
 import { synthesize, voiceStatus } from "./voice.js";
 import type { Fleet } from "./fleet.js";
 import type { Garth } from "./garth.js";
@@ -34,6 +34,11 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
     const { name } = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
     const ch = world.createChannel(name?.trim() || undefined);
     return c.json({ id: ch.id, name: ch.name });
+  });
+  // which harness a channel's G.A.R.T.H. runs on: { kind: "claude-code" | "codex" | "api", model? }
+  app.post("/api/channels/:id/brain", async (c) => {
+    const { kind, model } = await c.req.json<{ kind: GarthBrainKind; model?: string }>();
+    return json(c, () => garth.setBrain(c.req.param("id"), kind, model));
   });
   app.delete("/api/channels/:id", (c) =>
     json(c, () => {

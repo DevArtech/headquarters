@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { GarthMessage } from "@hq/protocol";
+import type { GarthBrainKind, GarthMessage } from "@hq/protocol";
 import { activeChannelOf, post, useStore } from "../store";
 import { tts } from "../tts";
 
@@ -14,6 +14,7 @@ export function Command() {
   const channel = useStore(activeChannelOf);
   const setChannel = useStore((s) => s.setChannel);
   const channels = state?.garth.channels ?? [];
+  const brains = state?.garth.brains ?? [];
   const [text, setText] = useState("");
   const [panel, setPanel] = useState<null | "history" | "inbox" | "channels">(null);
   const input = useRef<HTMLInputElement>(null);
@@ -75,6 +76,7 @@ export function Command() {
               <div key={c.id} className={`chan ${c.id === channel?.id ? "on" : ""}`} onClick={() => switchTo(c.id)}>
                 <div className="chan-head">
                   <span className="chan-name"># {c.name}</span>
+                  <span className="chan-brain">{BRAIN[c.brain]}</span>
                   {c.state !== "idle" && <i className="led running" />}
                   <span className="time">{ago(c.updatedAt)}</span>
                   {c.id !== "general" && (
@@ -139,6 +141,19 @@ export function Command() {
         <button className="chan-chip" onClick={() => setPanel((p) => (p === "channels" ? null : "channels"))} title="Channels">
           # {channel?.name ?? "General"}
         </button>
+        {channel && (
+          <select
+            className="brain-chip"
+            value={channel.brain}
+            disabled={brains.length < 2}
+            title={`G.A.R.T.H. in this channel runs on ${BRAIN[channel.brain]}${channel.model ? ` (${channel.model})` : ""}`}
+            onChange={(e) => post(`/api/channels/${channel.id}/brain`, { kind: e.target.value }).catch((err) => alert(err.message))}
+          >
+            {brains.map((b) => (
+              <option key={b} value={b}>{BRAIN[b]}</option>
+            ))}
+          </select>
+        )}
         <input
           id="garth-input"
           ref={input}
@@ -221,6 +236,8 @@ const Lines = memo(
   },
   (a, b) => a.transcript.length === b.transcript.length && a.transcript[a.transcript.length - 1]?.id === b.transcript[b.transcript.length - 1]?.id,
 );
+
+const BRAIN: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", api: "Claude API" };
 
 function ago(ts: number) {
   const s = (Date.now() - ts) / 1000;

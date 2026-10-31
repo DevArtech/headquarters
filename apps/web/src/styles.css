@@ -184,6 +184,14 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: rgba(79, 209, 255, 0.08); border: 1px solid var(--line); color: var(--cyan); font: 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
 }
 .chan-chip:hover { border-color: var(--line-strong); }
+.brain-chip {
+  flex: none; height: 26px; padding: 0 6px; cursor: pointer; appearance: none; -webkit-appearance: none; outline: none;
+  background: none; border: 1px solid var(--line); color: var(--muted); font: 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+}
+.brain-chip:hover:not(:disabled), .brain-chip:focus-visible { border-color: var(--line-strong); color: var(--cyan); }
+.brain-chip:disabled { cursor: default; }
+.brain-chip option { background: #060c16; color: var(--text); }
+.chan-brain { flex: none; font: 9px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .new-channel {
   align-self: flex-start; padding: 6px 12px; cursor: pointer; background: rgba(79, 209, 255, 0.1); border: 1px solid rgba(79, 209, 255, 0.4);
   color: var(--cyan); font: 600 10px var(--mono); letter-spacing: 0.16em; text-transform: uppercase;

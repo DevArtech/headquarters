@@ -2,16 +2,23 @@ import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Agent, GarthMessage, GarthState, HqToUi, Notification, Outpost, Snapshot, Task } from "@hq/protocol";
+import type { Agent, GarthBrainKind, GarthMessage, GarthState, HqToUi, Notification, Outpost, Snapshot, Task } from "@hq/protocol";
 import { newId } from "@hq/protocol";
 
-/** A G.A.R.T.H. channel: its own conversation, backed by its own Claude Code session. */
+export interface BrainChoice {
+  kind: GarthBrainKind;
+  model?: string;
+}
+
+/** A G.A.R.T.H. channel: its own conversation, backed by its own harness session. */
 export interface Channel {
   id: string;
   name: string;
   createdAt: number;
   updatedAt: number;
-  sessionId?: string;
+  brain?: BrainChoice; // unset = the operator's last choice, else the default
+  sessionId?: string; // Claude Code
+  codexThread?: string; // Codex
   transcript: GarthMessage[];
   state: GarthState;
 }
@@ -25,6 +32,7 @@ interface Persisted {
   notifications: Notification[];
   channels?: Array<Omit<Channel, "state">>;
   lastTurnChannel?: string;
+  brainDefault?: BrainChoice;
   voice?: { voice: string; speed: number };
   // pre-channels format, migrated into the "General" channel
   transcript?: GarthMessage[];
@@ -46,6 +54,10 @@ export class World extends EventEmitter {
   lastTurnChannel?: string;
   /** Voice chosen live by the operator (overrides GARTH_VOICE / GARTH_VOICE_SPEED). */
   voice?: { voice: string; speed: number };
+  /** Brains installed on this machine, preferred first (set by G.A.R.T.H. at boot). */
+  brains: GarthBrainKind[] = [];
+  /** The operator's last brain choice: what channels without their own choice use. */
+  brainDefault?: BrainChoice;
 
   private file: string;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -72,6 +84,7 @@ export class World extends EventEmitter {
           });
         }
         this.lastTurnChannel = p.lastTurnChannel;
+        this.brainDefault = p.brainDefault;
         this.voice = p.voice;
       } catch (e) {
         console.error("[world] could not load state:", e);
@@ -90,6 +103,11 @@ export class World extends EventEmitter {
     return states.includes("speaking") ? "speaking" : states.includes("thinking") ? "thinking" : "idle";
   }
 
+  /** The brain a channel runs on: its own choice, else the last choice, else the preferred one, if installed. */
+  brainOf(c: Channel): BrainChoice {
+    return [c.brain, this.brainDefault].find((b) => b && this.brains.includes(b.kind)) ?? { kind: this.brains[0] ?? "api" };
+  }
+
   snapshot(): Snapshot {
     return {
       hq: this.hq,
@@ -101,9 +119,15 @@ export class World extends EventEmitter {
         state: this.garthState(),
         channels: [...this.channels.values()]
           .sort((a, b) => b.updatedAt - a.updatedAt)
-          .map((c) => ({ id: c.id, name: c.name, state: c.state, updatedAt: c.updatedAt, transcript: c.transcript.slice(-UI_TRANSCRIPT) })),
+          .map((c) => ({ id: c.id, name: c.name, state: c.state, ...this.brainView(c), updatedAt: c.updatedAt, transcript: c.transcript.slice(-UI_TRANSCRIPT) })),
+        brains: this.brains,
       },
     };
+  }
+
+  private brainView(c: Channel) {
+    const b = this.brainOf(c);
+    return { brain: b.kind, ...(b.model ? { model: b.model } : {}) };
   }
 
   changed() {
@@ -167,6 +191,7 @@ export class World extends EventEmitter {
       notifications: this.notifications,
       channels: [...this.channels.values()].map(({ state: _s, ...c }) => c),
       lastTurnChannel: this.lastTurnChannel,
+      brainDefault: this.brainDefault,
       voice: this.voice,
     };
     fs.writeFile(this.file, JSON.stringify(p), (err) => err && console.error("[world] save failed:", err));

@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { Task } from "@hq/protocol";
+import type { GarthBrainKind, Task } from "@hq/protocol";
 import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
 import type { World } from "./world.js";
@@ -9,8 +9,8 @@ type Tool = Anthropic.Beta.BetaTool;
 const str = (description: string) => ({ type: "string" as const, description });
 
 /**
- * G.A.R.T.H.'s fleet tools. One definition serves both brains: the API brain passes these to the
- * Messages API directly; the Claude Code brain reaches them through the MCP bridge (bin/mcp-bridge.mjs).
+ * G.A.R.T.H.'s fleet tools. One definition serves every brain: the API brain passes these to the
+ * Messages API directly; the Claude Code and Codex brains reach them through the MCP bridge (bin/mcp-bridge.mjs).
  */
 export const TOOLS: Tool[] = [
   { name: "fleet_status", description: "Current outposts, their harnesses, live agents, and recent tasks.", input_schema: { type: "object", properties: {} } },
@@ -77,6 +77,19 @@ export const TOOLS: Tool[] = [
     input_schema: { type: "object", properties: { name: str("New name"), channelId: str("Channel to rename (default: this one)") }, required: ["name"] },
   },
   {
+    name: "set_brain",
+    description:
+      "Switch the agent harness you think with in this channel, when the operator asks (e.g. \"use Codex\", \"switch back to Claude\", \"try a different model\"). Brains: claude-code (Claude Code), codex (OpenAI Codex), api (Claude API, no repo access). Your reply now still comes from the current harness; the new one takes over from the operator's next message with a recap of this conversation, and is remembered for this channel and as the default for new ones. Say briefly that you've switched.",
+    input_schema: {
+      type: "object",
+      properties: {
+        brain: { type: "string", enum: ["claude-code", "codex", "api"], description: "Harness to switch to" },
+        model: str("Model id for that harness (optional; omit for its default)"),
+      },
+      required: ["brain"],
+    },
+  },
+  {
     name: "list_voices",
     description: "List the voices you can speak with (accent, gender, quality grade, best first) and the one currently in use.",
     input_schema: { type: "object", properties: {} },
@@ -108,7 +121,11 @@ export type ToolRunner = (name: string, input: Record<string, unknown>, ctx: Too
 const iso = (ts: number) => new Date(ts).toISOString().slice(0, 16).replace("T", " ");
 const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n) + "…" : t);
 
-export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): ToolRunner {
+export interface BrainControl {
+  setBrain(channelId: string, kind: GarthBrainKind, model?: string): Promise<unknown>;
+}
+
+export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks, brains: BrainControl): ToolRunner {
   return async (name, input, ctx) => {
     const s = (k: string) => input[k] as string | undefined;
     switch (name) {
@@ -196,6 +213,10 @@ export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): Tool
         c.name = name;
         world.changed();
         return `renamed to "${name}"`;
+      }
+      case "set_brain": {
+        const now = await brains.setBrain(ctx.channelId, s("brain") as GarthBrainKind, s("model") || undefined);
+        return { ...(now as object), available: world.brains, note: "takes over from the operator's next message" };
       }
       case "list_voices":
         return { current: voiceStatus(), voices: await listVoices() };
