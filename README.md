@@ -45,7 +45,7 @@ It appears on the graph within a second. Put HQ on a tailnet or VPN rather than 
   - typechecks first; on failure the old code keeps running and G.A.R.T.H. is sent the errors;
   - if new code from G.A.R.T.H. crashes on boot, stashes just the files it changed (`git stash list`, look for `hq-autorevert`) and restarts on the previous code.
   - `apps/web` changes hot-reload without a restart.
-- Voice settings: `GARTH_VOICE` (default `am_michael`; most natural overall: `af_heart`, `af_bella`), `GARTH_VOICE_SPEED` (default `1.05`).
+- Voice settings: `GARTH_VOICE` (default `am_michael`; most natural overall: `af_heart`, `af_bella`), `GARTH_VOICE_SPEED` (default `1.05`). You can also just ask G.A.R.T.H. ("switch to a British voice", "talk a little faster"); it changes live via its `set_voice` tool and the choice is saved in `data/hq.json`, overriding `.env`.
 - Settings: `GARTH_ALLOWED_TOOLS` (default `mcp__hq Bash Read Edit Write Glob Grep WebSearch WebFetch`), `GARTH_PERMISSION_MODE` (default `acceptEdits`), `GARTH_CC_MODEL`.
 
 ## Harness notes

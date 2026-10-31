@@ -25,6 +25,8 @@ const supervisor = typeof process.send === "function";
 const toSupervisor = (m: object) => supervisor && process.send!(m);
 
 const world = new World(path.join(repoRoot, "data"));
+// a voice chosen live by the operator wins over the .env defaults
+if (world.voice) Object.assign(voiceConfig, world.voice);
 const fleet = new Fleet(world);
 const tasks = new Tasks(world, fleet);
 const garth = new Garth(world, fleet, tasks, { repoRoot, hqApi: `http://127.0.0.1:${port}`, hqToken: token, supervised: supervisor });

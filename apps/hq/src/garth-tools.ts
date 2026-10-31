@@ -3,6 +3,7 @@ import type { Task } from "@hq/protocol";
 import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
 import type { World } from "./world.js";
+import { listVoices, setVoice, voiceStatus } from "./voice.js";
 
 type Tool = Anthropic.Beta.BetaTool;
 const str = (description: string) => ({ type: "string" as const, description });
@@ -45,6 +46,20 @@ export const TOOLS: Tool[] = [
     name: "outpost_exec",
     description: "Run a shell command on any outpost (e.g. git pull to update a remote outpost's checkout, which restarts it on the new code).",
     input_schema: { type: "object", properties: { outpostId: str("Outpost id"), cmd: str("Command"), cwd: str("Working dir (optional)") }, required: ["outpostId", "cmd"] },
+  },
+  {
+    name: "list_voices",
+    description: "List the voices you can speak with (accent, gender, quality grade, best first) and the one currently in use.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "set_voice",
+    description:
+      "Change your speaking voice and/or speed, live, when the operator asks. Takes effect from your next sentence and is remembered across restarts. Voice ids look like am_michael (American male), bm_george (British male), af_heart (American female), bf_emma (British female); use list_voices if unsure.",
+    input_schema: {
+      type: "object",
+      properties: { voice: str("Voice id, e.g. bm_george"), speed: { type: "number", description: "Speaking rate, 0.5 to 2 (1 is normal; currently ~1.05)" } },
+    },
   },
   {
     name: "notify_user",
@@ -98,6 +113,14 @@ export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): Tool
       }
       case "outpost_exec":
         return fleet.request(s("outpostId")!, "exec", { cmd: s("cmd")!, cwd: s("cwd"), timeoutMs: 120_000 }, 125_000);
+      case "list_voices":
+        return { current: voiceStatus(), voices: await listVoices() };
+      case "set_voice": {
+        const now = await setVoice({ voice: s("voice") || undefined, speed: input.speed === undefined ? undefined : Number(input.speed) });
+        world.voice = now;
+        world.changed();
+        return { ...now, note: "applies from your next sentence" };
+      }
       case "notify_user":
         world.notify({ level: (s("level") as "info") ?? "info", title: s("title")!, body: s("body"), taskId: s("taskId") });
         return "posted";

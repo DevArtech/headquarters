@@ -56,3 +56,26 @@ export async function synthesize(text: string, voice = voiceConfig.voice): Promi
   queue = job.catch(() => {});
   return (await job).toWav();
 }
+
+/** Voices the model offers, best first, so G.A.R.T.H. can describe the options. */
+export async function listVoices() {
+  const tts = await loadVoice();
+  const order = ["A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "D-", "F+", "F"];
+  return Object.entries(tts.voices as Record<string, { name: string; language: string; gender: string; overallGrade: string }>)
+    .map(([id, v]) => ({ id, name: v.name, accent: v.language === "en-gb" ? "British" : "American", gender: v.gender, grade: v.overallGrade }))
+    .sort((a, b) => order.indexOf(a.grade) - order.indexOf(b.grade));
+}
+
+/** Change the voice and/or speed live; the next sentence spoken uses it. */
+export async function setVoice(change: { voice?: string; speed?: number }) {
+  if (change.voice) {
+    const tts = await loadVoice();
+    if (!(change.voice in tts.voices)) throw new Error(`unknown voice "${change.voice}"; call list_voices for the options`);
+    voiceConfig.voice = change.voice;
+  }
+  if (change.speed !== undefined) {
+    if (!(change.speed >= 0.5 && change.speed <= 2)) throw new Error("speed must be between 0.5 and 2");
+    voiceConfig.speed = change.speed;
+  }
+  return { voice: voiceConfig.voice, speed: voiceConfig.speed };
+}

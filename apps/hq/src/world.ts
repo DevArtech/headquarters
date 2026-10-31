@@ -10,6 +10,7 @@ interface Persisted {
   notifications: Notification[];
   transcript: GarthMessage[];
   garthSession?: string;
+  voice?: { voice: string; speed: number };
 }
 
 /**
@@ -25,6 +26,8 @@ export class World extends EventEmitter {
   garth: { state: GarthState; transcript: GarthMessage[] } = { state: "idle", transcript: [] };
   /** Claude Code session id for G.A.R.T.H., so the conversation survives restarts. */
   garthSession?: string;
+  /** Voice chosen live by the operator (overrides GARTH_VOICE / GARTH_VOICE_SPEED). */
+  voice?: { voice: string; speed: number };
 
   private file: string;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -44,6 +47,7 @@ export class World extends EventEmitter {
         this.notifications = p.notifications ?? [];
         this.garth.transcript = p.transcript ?? [];
         this.garthSession = p.garthSession;
+        this.voice = p.voice;
       } catch (e) {
         console.error("[world] could not load state:", e);
       }
@@ -98,6 +102,7 @@ export class World extends EventEmitter {
       notifications: this.notifications,
       transcript: this.garth.transcript,
       garthSession: this.garthSession,
+      voice: this.voice,
     };
     fs.writeFile(this.file, JSON.stringify(p), (err) => err && console.error("[world] save failed:", err));
   }
