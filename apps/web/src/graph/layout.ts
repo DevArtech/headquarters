@@ -23,8 +23,9 @@ const R_HQ_CLOUD = 580;
 export function layout(s: Snapshot): { nodes: AnyNode[]; edges: ConduitEdge[] } {
   const nodes: AnyNode[] = [];
   const edges: ConduitEdge[] = [];
-  const link = (id: string, source: string, target: string, kind: ConduitData["kind"], active: boolean): ConduitEdge => ({
-    id, source, target, type: "conduit", data: { kind, active, trimStart: source === "hq" ? HUB_RIM : 0 },
+  // lines to other devices start at the core's rim; task lines run all the way into G.A.R.T.H.'s centre
+  const link = (id: string, source: string, target: string, kind: ConduitData["kind"], active: boolean, toCenter = false): ConduitEdge => ({
+    id, source, target, type: "conduit", data: { kind, active, trimStart: source === "hq" && !toCenter ? HUB_RIM : 0 },
   });
   const now = Date.now();
 
@@ -65,7 +66,7 @@ export function layout(s: Snapshot): { nodes: AnyNode[]; edges: ConduitEdge[] } 
         const kind = it.lane === "cloud" ? "cloud" : "link";
         if ("instruction" in it) nodes.push({ id: it.id, type: "task", position: pos, data: { task: it, agent: agentByTask.get(it.id) } });
         else nodes.push({ id: it.id, type: "agent", position: pos, data: { agent: it } });
-        edges.push(link(`${from}-${it.id}`, from, it.id, kind, it.status === "running"));
+        edges.push(link(`${from}-${it.id}`, from, it.id, kind, it.status === "running", true));
       });
     }
   }
