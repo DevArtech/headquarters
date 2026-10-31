@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { GarthBrainKind, GarthMessage } from "@hq/protocol";
+import { BRAIN_NAME, type GarthMessage } from "@hq/protocol";
 import { activeChannelOf, post, useStore } from "../store";
 import { tts } from "../tts";
 
@@ -75,7 +75,7 @@ export function Command() {
               <div key={c.id} className={`chan ${c.id === channel?.id ? "on" : ""}`} onClick={() => switchTo(c.id)}>
                 <div className="chan-head">
                   <span className="chan-name"># {c.name}</span>
-                  <span className="chan-brain">{BRAIN[c.brain]}</span>
+                  <span className="chan-brain">{BRAIN_NAME[c.brain]}</span>
                   {c.state !== "idle" && <i className="led running" />}
                   <span className="time">{ago(c.updatedAt)}</span>
                   {c.id !== "general" && (
@@ -222,8 +222,6 @@ const Lines = memo(
   },
   (a, b) => a.transcript.length === b.transcript.length && a.transcript[a.transcript.length - 1]?.id === b.transcript[b.transcript.length - 1]?.id,
 );
-
-const BRAIN: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", api: "Claude API" };
 
 function ago(ts: number) {
   const s = (Date.now() - ts) / 1000;

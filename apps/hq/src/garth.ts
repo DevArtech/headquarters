@@ -1,8 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaMessageStreamParams } from "@anthropic-ai/sdk/resources/beta/messages";
 import path from "node:path";
-import { GarthBrainKind, type GarthMessage, type Task } from "@hq/protocol";
+import { BRAIN_NAME, GarthBrainKind, type GarthMessage, type Task } from "@hq/protocol";
 import { which } from "@hq/outpost";
+import { AcpBrain, antigravityAgent, antigravitySignedIn, sweepAgentTemp } from "./garth-acp.js";
 import { ClaudeCodeBrain, type Sink } from "./garth-cc.js";
 import { CodexBrain } from "./garth-codex.js";
 import { TOOLS, createToolRunner, type ToolRunner } from "./garth-tools.js";
@@ -10,7 +11,6 @@ import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
 import type { BrainChoice, World } from "./world.js";
 
-const HARNESS: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", api: "Claude API" };
 
 const PERSONA = `You are G.A.R.T.H. (General Agent for Routing, Tasking & Handoffs), the operator's single point of contact inside Headquarters: a command center for agent harnesses (Claude Code, Codex, shell) running on Outposts (devices) and in the cloud.
 
@@ -85,7 +85,7 @@ function handoff(from: GarthBrainKind, to: GarthBrainKind, transcript: GarthMess
     .slice(-20)
     .map((m) => `${m.role === "user" ? "operator" : "you"}: ${m.text.length > 600 ? m.text.slice(0, 600) + "…" : m.text}`);
   if (!lines.length) return "";
-  return `[context] The operator just moved this channel from the ${HARNESS[from]} harness to you on ${HARNESS[to]}. You don't share that harness's memory, so here is the recent conversation, oldest first:\n${lines.join("\n")}\n[end context]\n\n`;
+  return `[context] The operator just moved this channel from the ${BRAIN_NAME[from]} harness to you on ${BRAIN_NAME[to]}. You don't share that harness's memory, so here is the recent conversation, oldest first:\n${lines.join("\n")}\n[end context]\n\n`;
 }
 
 /** Idle harness sessions are shut down after this long and resumed on the next message. */
@@ -128,12 +128,15 @@ export class Garth {
     return [...this.runtimes.values()].some((r) => r.busy);
   }
 
-  /** Which brains are installed here, preferred first: GARTH_BRAIN, then Claude Code, Codex, the API. */
+  /** Which brains are installed here, preferred first: GARTH_BRAIN, then Claude Code, Codex, Antigravity, the API. */
   private async init() {
     const env = process.env;
+    const antigravity = antigravityAgent();
+    if (antigravity) sweepAgentTemp(antigravity);
     const has = {
       "claude-code": !!(await which(env.GARTH_CLAUDE_BIN ?? "claude")),
       codex: !!(await which(env.GARTH_CODEX_BIN ?? "codex")),
+      antigravity: !!antigravity && antigravitySignedIn(antigravity),
       api: !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN),
     };
     const want = GarthBrainKind.safeParse(env.GARTH_BRAIN).data;
@@ -157,7 +160,7 @@ export class Garth {
   async setBrain(channelId: string | undefined, kind: GarthBrainKind, model?: string): Promise<BrainChoice> {
     await this.ready;
     if (!GarthBrainKind.safeParse(kind).success) throw new Error(`unknown brain "${kind}" (one of: ${GarthBrainKind.options.join(", ")})`);
-    if (!this.world.brains.includes(kind)) throw new Error(`${HARNESS[kind]} isn't available here (available: ${this.world.brains.join(", ")})`);
+    if (!this.world.brains.includes(kind)) throw new Error(`${BRAIN_NAME[kind]} isn't available here (available: ${this.world.brains.join(", ")})`);
     const c = this.world.channel(channelId);
     const choice: BrainChoice = model?.trim() ? { kind, model: model.trim() } : { kind };
     const was = this.world.brainOf(c);
@@ -185,7 +188,7 @@ export class Garth {
     const { kind, model } = this.world.brainOf(channel);
     const harness = {
       cwd: this.opts.repoRoot,
-      systemPrompt: PERSONA + "\n" + channelGuide(channel.id) + "\n" + selfModification(this.opts.repoRoot, this.opts.supervised, HARNESS[kind]),
+      systemPrompt: PERSONA + "\n" + channelGuide(channel.id) + "\n" + selfModification(this.opts.repoRoot, this.opts.supervised, BRAIN_NAME[kind]),
       model,
       mcpBridge: path.join(this.opts.repoRoot, "apps/hq/bin/mcp-bridge.mjs"),
       hqApi: this.opts.hqApi,
@@ -198,7 +201,15 @@ export class Garth {
         ? new ClaudeCodeBrain({ ...harness, sessionId: channel.sessionId, onSession: (id) => ((channel.sessionId = id), saved()) })
         : kind === "codex"
           ? new CodexBrain({ ...harness, threadId: channel.codexThread, onThread: (id) => ((channel.codexThread = id), saved()) })
-          : new ApiBrain(this.run, channel.id, model);
+          : kind === "antigravity"
+            ? new AcpBrain({
+                ...harness,
+                agent: antigravityAgent()!,
+                model: model ?? process.env.GARTH_ANTIGRAVITY_MODEL,
+                sessionId: channel.acpSession,
+                onSession: (id) => ((channel.acpSession = id), saved()),
+              })
+            : new ApiBrain(this.run, channel.id, model);
     rt = { brain, busy: false };
     this.runtimes.set(channel.id, rt);
     return rt;

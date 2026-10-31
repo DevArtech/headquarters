@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import type { GarthBrainKind, Task } from "@hq/protocol";
+import { GarthBrainKind, type Task } from "@hq/protocol";
 import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
 import type { World } from "./world.js";
@@ -80,11 +80,11 @@ export const TOOLS: Tool[] = [
   {
     name: "set_brain",
     description:
-      "Switch the agent harness you think with in this channel, when the operator asks (e.g. \"use Codex\", \"switch back to Claude\", \"try a different model\"). Brains: claude-code (Claude Code), codex (OpenAI Codex), api (Claude API, no repo access). Your reply now still comes from the current harness; the new one takes over from the operator's next message with a recap of this conversation, and is remembered for this channel only (the brain new channels start on is a setting: update_settings). Say briefly that you've switched.",
+      "Switch the agent harness you think with in this channel, when the operator asks (e.g. \"use Codex\", \"switch back to Claude\", \"try a different model\"). Brains: claude-code (Claude Code), codex (OpenAI Codex), antigravity (Google Antigravity, Gemini models), api (Claude API, no repo access). Your reply now still comes from the current harness; the new one takes over from the operator's next message with a recap of this conversation, and is remembered for this channel only (the brain new channels start on is a setting: update_settings). Say briefly that you've switched.",
     input_schema: {
       type: "object",
       properties: {
-        brain: { type: "string", enum: ["claude-code", "codex", "api"], description: "Harness to switch to" },
+        brain: { type: "string", enum: [...GarthBrainKind.options], description: "Harness to switch to" },
         model: str("Model id for that harness (optional; omit for its default)"),
       },
       required: ["brain"],
@@ -102,7 +102,7 @@ export const TOOLS: Tool[] = [
     input_schema: {
       type: "object",
       properties: {
-        brain: { type: ["string", "null"], enum: ["claude-code", "codex", "api", null], description: "Brain for new channels" },
+        brain: { type: ["string", "null"], enum: [...GarthBrainKind.options, null], description: "Brain for new channels" },
         model: { type: ["string", "null"], description: "Model for that brain (null = its default)" },
         startupChannel: str('Channel opened on page load: "last" (last used), "general", "new" (a fresh channel), or a channel id'),
         voice: { type: ["string", "null"], description: "Voice id, e.g. bm_george (see list_voices)" },

@@ -38,10 +38,11 @@ It appears on the graph within a second. Put HQ on a tailnet or VPN rather than 
 
 ## G.A.R.T.H.
 
-- **Brain**: a persistent agent-harness session on the HQ machine, working in this repo. Three brains, chosen per channel:
+- **Brain**: a persistent agent-harness session on the HQ machine, working in this repo. Four brains, chosen per channel:
   - **Claude Code** (`apps/hq/src/garth-cc.ts`): `claude -p` in stream-json mode.
   - **Codex** (`apps/hq/src/garth-codex.ts`): `codex app-server` over JSON-RPC (the protocol T3 Code uses). Runs with approvals off in Codex's `workspace-write` sandbox (network on); your own Codex MCP servers and plugins are left out.
-  - **Claude API** (`ANTHROPIC_API_KEY`): no repo access; the fallback when neither CLI is installed.
+  - **Antigravity** (`apps/hq/src/garth-acp.ts`): Google's Antigravity agent over ACP (Agent Client Protocol), with Gemini models. It's a separate install from the Antigravity editor: unzip `agy-acp-server-<version>-darwin-arm64.zip` from Google (`https://dl.google.com/agy-extensions/releases/macos/`, the build the ACP Registry lists) into `~/.local/share/antigravity-acp/<version>/`, then sign in once (run the agent and call ACP `authenticate` with `oauth-personal`, or use a Gemini API key). Its sign-in and settings live in a private `GEMINI_HOME` (`~/.local/share/antigravity-acp/profile`). It only shows as available once signed in. Tool permission requests are granted, as for the other harnesses.
+  - **Claude API** (`ANTHROPIC_API_KEY`): no repo access; the fallback when no harness is installed.
 
   Fleet tools reach the harnesses through a dependency-free MCP bridge (`apps/hq/bin/mcp-bridge.mjs` → `/api/garth/tools`). Session and thread ids are saved per channel in `data/hq.json`, so conversations survive restarts. Switch the current channel's brain by asking G.A.R.T.H. ("use Codex here") or with `POST /api/channels/:id/brain {kind, model?}`; it changes over after the current reply and the new harness gets a recap of the conversation. New channels start on the brain set in Settings. Installed brains are detected at boot (`GARTH_BRAIN` picks the preferred one; the Codex CLI ships inside ChatGPT.app at `Contents/Resources/codex-cli/bin/codex` if it isn't on your PATH).
 - **Settings** (gear, top right, or just ask G.A.R.T.H.): the defaults for new channels and page loads — brain and model for new channels, which channel opens on load (last used, General, a new one, or a specific channel), voice, speed, and whether speech starts on. Saved in `data/hq.json`; `GET/POST /api/settings`. Existing channels keep their brain when the default changes; the mute button lasts until reload.
@@ -54,6 +55,7 @@ It appears on the graph within a second. Put HQ on a tailnet or VPN rather than 
   - `apps/web` changes hot-reload without a restart.
 - Voice settings: `GARTH_VOICE` (default `am_michael`; most natural overall: `af_heart`, `af_bella`), `GARTH_VOICE_SPEED` (default `1.05`). You can also just ask G.A.R.T.H. ("switch to a British voice", "talk a little faster"); it changes live via its `set_voice` tool and the choice is saved in `data/hq.json`, overriding `.env`.
 - Claude Code settings: `GARTH_ALLOWED_TOOLS` (default `mcp__hq Bash Read Edit Write Glob Grep WebSearch WebFetch`), `GARTH_PERMISSION_MODE` (default `acceptEdits`), `GARTH_CC_MODEL`, `GARTH_CLAUDE_BIN`.
+- Antigravity settings: `GARTH_ANTIGRAVITY_MODEL` (default: the agent's, Gemini 3.8 Flash; e.g. `gemini-4-argon-medium`; an unavailable id fails the turn with the list of available ones), `GARTH_ANTIGRAVITY_HOME`, `GARTH_ANTIGRAVITY_BIN`.
 - Codex settings: `GARTH_CODEX_MODEL` (default: your Codex config's), `GARTH_CODEX_EFFORT` (default `medium`, quick enough for voice), `GARTH_CODEX_SANDBOX` (`read-only`, `workspace-write` (default) or `danger-full-access`), `GARTH_CODEX_BIN`, `GARTH_CODEX_ARGS`.
 
 ## Harness notes

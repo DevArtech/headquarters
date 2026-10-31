@@ -44,7 +44,7 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
     const ch = world.createChannel(name?.trim() || undefined);
     return c.json({ id: ch.id, name: ch.name });
   });
-  // which harness a channel's G.A.R.T.H. runs on: { kind: "claude-code" | "codex" | "api", model? }
+  // which harness a channel's G.A.R.T.H. runs on: { kind: "claude-code" | "codex" | "antigravity" | "api", model? }
   app.post("/api/channels/:id/brain", async (c) => {
     const { kind, model } = await c.req.json<{ kind: GarthBrainKind; model?: string }>();
     return json(c, () => garth.setBrain(c.req.param("id"), kind, model));

@@ -104,8 +104,9 @@ export const GarthState = z.enum(["idle", "thinking", "speaking", "alert"]);
 export type GarthState = z.infer<typeof GarthState>;
 
 /** The agent harness G.A.R.T.H. thinks with. Chosen per channel, switchable live. */
-export const GarthBrainKind = z.enum(["claude-code", "codex", "api"]);
+export const GarthBrainKind = z.enum(["claude-code", "codex", "antigravity", "api"]);
 export type GarthBrainKind = z.infer<typeof GarthBrainKind>;
+export const BRAIN_NAME: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", antigravity: "Antigravity", api: "Claude API" };
 
 /**
  * Operator settings: the defaults applied to new channels and when the UI is loaded.

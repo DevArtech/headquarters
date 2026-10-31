@@ -1,8 +1,7 @@
-import { GarthBrainKind, type Settings } from "@hq/protocol";
+import { BRAIN_NAME, GarthBrainKind, type Settings } from "@hq/protocol";
 import { setVoice, voiceConfig } from "./voice.js";
 import type { World } from "./world.js";
 
-const HARNESS: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", api: "Claude API" };
 const STARTUP = ["last", "general", "new"];
 
 /** A change to the settings. null clears an optional field back to its default. */
@@ -28,7 +27,7 @@ export async function updateSettings(world: World, patch: SettingsPatch): Promis
     if (patch.brain === null) delete next.brain;
     else {
       if (!GarthBrainKind.safeParse(patch.brain).success) throw new Error(`unknown brain "${patch.brain}" (one of: ${GarthBrainKind.options.join(", ")})`);
-      if (!world.brains.includes(patch.brain)) throw new Error(`${HARNESS[patch.brain]} isn't installed here (available: ${world.brains.join(", ")})`);
+      if (!world.brains.includes(patch.brain)) throw new Error(`${BRAIN_NAME[patch.brain]} isn't installed here (available: ${world.brains.join(", ")})`);
       next.brain = patch.brain;
     }
     // a different brain makes the old model meaningless unless one is given alongside it

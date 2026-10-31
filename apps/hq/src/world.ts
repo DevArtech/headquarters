@@ -19,6 +19,7 @@ export interface Channel {
   brain?: BrainChoice; // unset = the operator's last choice, else the default
   sessionId?: string; // Claude Code
   codexThread?: string; // Codex
+  acpSession?: string; // Antigravity
   transcript: GarthMessage[];
   state: GarthState;
 }

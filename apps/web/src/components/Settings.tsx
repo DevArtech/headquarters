@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { GarthBrainKind, Settings as SettingsT } from "@hq/protocol";
+import { BRAIN_NAME, type Settings as SettingsT } from "@hq/protocol";
 import { post, useStore } from "../store";
-
-export const BRAIN_NAME: Record<GarthBrainKind, string> = { "claude-code": "Claude Code", codex: "Codex", api: "Claude API" };
 
 interface Voice {
   id: string;
