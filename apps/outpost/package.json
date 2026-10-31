@@ -3,10 +3,14 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
-  "bin": { "outpost": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "outpost": "./src/index.ts"
+  },
   "scripts": {
-    "dev": "tsx src/index.ts",
+    "dev": "node ../../scripts/supervise.mjs --name outpost --entry src/index.ts --watch src,../../packages/protocol/src --root ../..",
     "start": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
     "build": "tsc -p tsconfig.json"

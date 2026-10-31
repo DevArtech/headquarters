@@ -1,6 +1,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { TaskStatus } from "@hq/protocol";
 import { Orb } from "../components/Orb";
+import { useStore } from "../store";
 import type { AgentNode, HqNode, OutpostNode, TaskNode } from "./layout";
 
 const CENTER = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
@@ -28,13 +29,16 @@ const TASK_STATE: Record<TaskStatus, string> = {
 };
 
 export function HqNodeView({ data }: NodeProps<HqNode>) {
+  // the voice can still be talking after generation finishes; the core follows the voice
+  const voice = useStore((s) => s.voiceSpeaking);
+  const state = voice && data.garthState !== "alert" ? "speaking" : data.garthState;
   return (
-    <div className={`hub ${data.garthState}`}>
+    <div className={`hub ${state}`}>
       {handles}
-      <Orb state={data.garthState} size={360} />
+      <Orb state={state} size={360} />
       <div className="hub-label">
         <b>G.A.R.T.H.</b>
-        <span>{GARTH_STATE[data.garthState] ?? data.garthState}</span>
+        <span>{GARTH_STATE[state] ?? state}</span>
       </div>
     </div>
   );

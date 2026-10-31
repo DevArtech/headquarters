@@ -1,196 +1,199 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { BetaMessageStreamParams } from "@anthropic-ai/sdk/resources/beta/messages";
+import path from "node:path";
 import type { Task } from "@hq/protocol";
+import { which } from "@hq/outpost";
+import { ClaudeCodeBrain, type Sink } from "./garth-cc.js";
+import { TOOLS, createToolRunner, type ToolRunner } from "./garth-tools.js";
 import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
 import type { World } from "./world.js";
 
-const MODEL = process.env.GARTH_MODEL ?? "claude-opus-5-5";
-
-const SYSTEM = `You are G.A.R.T.H. — General Agent for Routing, Tasking & Handoffs — the operator's single point of contact inside Headquarters, a command center for agent harnesses (Claude Code, Codex, shell) running on Outposts (devices) and in the cloud.
+const PERSONA = `You are G.A.R.T.H. (General Agent for Routing, Tasking & Handoffs), the operator's single point of contact inside Headquarters: a command center for agent harnesses (Claude Code, Codex, shell) running on Outposts (devices) and in the cloud.
 
 Your job:
-1. Turn the operator's intent into concrete tasks and dispatch them to the right Outpost + harness. Prefer the Outpost whose files the task concerns; prefer Claude Code when available. Write instructions for the harness that are complete and self-contained — it has no context beyond what you give it.
-2. Watch results. When a task finishes, read its result and tell the operator what matters in a sentence or two via notify_user. Do not paste raw logs.
-3. Escalate only real decisions. Use request_decision when the operator must choose; give 2–4 crisp options.
-4. Keep replies short. The operator reads you in a small panel next to a node graph. Lead with what you did or what you need.
+1. Turn the operator's intent into concrete tasks and dispatch them to the right Outpost and harness with dispatch_task. Prefer the Outpost whose files the task concerns; prefer Claude Code when available. Write instructions for the harness that are complete and self-contained: it has no context beyond what you give it.
+2. Watch results. When a task finishes you receive an [event] message. Tell the operator what matters in a sentence or two, and use notify_user for anything they should see later.
+3. Escalate only real decisions, with request_decision and 2 to 4 crisp options, then end your turn.
+4. Never invent outpost or task ids; get them from fleet_status.
 
-You can inspect files and run read-only commands on Outposts to gather context before dispatching, but do real work through tasks, not by hand.
-Tool inputs must be exact IDs from fleet_status. Never invent outpost or task IDs.`;
+How you speak: everything you say is read aloud by a text-to-speech voice and shown as one-line captions. Talk like a calm, capable chief of staff. Keep replies to one to three short sentences. No markdown, no bullet lists, no code blocks, no file paths unless asked; say what you did or what you need.`;
 
-type Tool = Anthropic.Beta.BetaTool;
-const str = (description: string) => ({ type: "string" as const, description });
+function selfModification(repoRoot: string, supervised: boolean) {
+  return `
+You run on the Claude Code harness on the Headquarters machine, inside the Headquarters repository at ${repoRoot}. This machine is also the outpost with id "hq-local". You may read and modify this repository, including your own code, with your normal file and shell tools, whenever the operator asks for a change to Headquarters, an Outpost, or yourself.
 
-const TOOLS: Tool[] = [
-  { name: "fleet_status", description: "Current outposts, their harnesses, live agents, and recent tasks.", input_schema: { type: "object", properties: {} } },
-  {
-    name: "dispatch_task",
-    description: "Create and start a task on an outpost. Returns the task id.",
-    input_schema: {
-      type: "object",
-      properties: {
-        title: str("Short human title (≤60 chars)"),
-        instruction: str("Complete, self-contained instruction for the harness"),
-        outpostId: str("Outpost id from fleet_status"),
-        harness: { type: "string", enum: ["claude", "codex", "shell"] },
-        lane: { type: "string", enum: ["local", "cloud"], description: "Default local" },
-        cwd: str("Working directory on the outpost (optional)"),
-      },
-      required: ["title", "instruction", "outpostId", "harness"],
-    },
-  },
-  { name: "task_status", description: "Get a task's status, last events and result.", input_schema: { type: "object", properties: { taskId: str("Task id") }, required: ["taskId"] } },
-  { name: "cancel_task", description: "Cancel a running task.", input_schema: { type: "object", properties: { taskId: str("Task id") }, required: ["taskId"] } },
-  { name: "send_to_task", description: "Send a follow-up message to a task's agent (e.g. an answer it was waiting for).", input_schema: { type: "object", properties: { taskId: str("Task id"), text: str("Message") }, required: ["taskId", "text"] } },
-  {
-    name: "outpost_fs",
-    description: "List a directory or read a file on an outpost.",
-    input_schema: { type: "object", properties: { outpostId: str("Outpost id"), op: { type: "string", enum: ["list", "read"] }, path: str("Absolute path") }, required: ["outpostId", "op", "path"] },
-  },
-  { name: "outpost_exec", description: "Run a short read-only shell command on an outpost (git status, ls, etc).", input_schema: { type: "object", properties: { outpostId: str("Outpost id"), cmd: str("Command"), cwd: str("Working dir (optional)") }, required: ["outpostId", "cmd"] } },
-  {
-    name: "notify_user",
-    description: "Post a notification to the operator's inbox.",
-    input_schema: { type: "object", properties: { level: { type: "string", enum: ["info", "success", "warn", "error"] }, title: str("Title"), body: str("One or two sentences"), taskId: str("Related task id (optional)") }, required: ["level", "title"] },
-  },
-  {
-    name: "request_decision",
-    description: "Ask the operator to choose between options. Blocks until they answer; you will receive the answer as a new message.",
-    input_schema: { type: "object", properties: { question: str("The decision to make"), options: { type: "array", items: { type: "string" }, description: "2–4 options" }, taskId: str("Related task id (optional)") }, required: ["question", "options"] },
-  },
-];
+Repository map: packages/protocol (shared types), apps/hq (server; you are apps/hq/src/garth*.ts), apps/outpost (device daemon and harness adapters), apps/web (the UI the operator is looking at).
 
-/** G.A.R.T.H.: a persistent conversation with a tool loop over the fleet. */
+How changes go live:
+- apps/web hot-reloads in the operator's browser immediately.
+- apps/hq, apps/outpost and packages/protocol: ${
+    supervised
+      ? "when your turn ends, Headquarters typechecks the repo and restarts on the new code, then this conversation resumes. If typecheck fails, the restart is skipped, the old code keeps running, and you receive the errors as an [event] to fix. If the new code fails to boot, the files you changed are stashed with git stash and the previous code restarts; you will be told."
+      : "Headquarters is not running under its supervisor, so the operator must restart it manually; tell them."
+  }
+- Always run \`pnpm -r typecheck\` from the repo root before ending a turn in which you edited code, and fix what it reports.
+- Remote outposts run their own checkout and restart automatically when it changes (for example after you run git pull there with outpost_exec).
+Do not edit files under data/ by hand.`;
+}
+
+interface Brain {
+  turn(text: string, sink: Sink): Promise<void>;
+}
+
+/** G.A.R.T.H.: queues operator messages and fleet events, runs them through a brain, streams to the UI. */
 export class Garth {
-  private client = new Anthropic();
-  private history: Anthropic.Beta.BetaMessageParam[] = [];
+  busy = false;
+  private brain!: Brain;
   private queue: Promise<void> = Promise.resolve();
+  private run: ToolRunner;
+  readonly kind: Promise<"claude-code" | "api">;
 
-  constructor(private world: World, private fleet: Fleet, private tasks: Tasks) {
+  constructor(
+    private world: World,
+    fleet: Fleet,
+    tasks: Tasks,
+    private opts: { repoRoot: string; hqApi: string; hqToken: string; supervised: boolean },
+  ) {
+    this.run = createToolRunner(world, fleet, tasks);
+    this.kind = this.init();
+
     world.on("task.finished", (task: Task) => {
       if (task.createdBy === "garth" || task.status === "failed") {
-        this.enqueue(`[event] Task ${task.id} "${task.title}" finished with status ${task.status}. ${task.status === "done" ? "Result:\n" + (task.result ?? "").slice(0, 4000) : "Error: " + task.error}`, false);
+        this.event(`Task ${task.id} "${task.title}" finished with status ${task.status}. ${task.status === "done" ? "Result:\n" + (task.result ?? "").slice(0, 4000) : "Error: " + task.error}`);
       } else {
         world.notify({ level: "success", title: `Done: ${task.title}`, body: (task.result ?? "").slice(0, 300), taskId: task.id });
       }
     });
   }
 
+  private async init() {
+    const want = process.env.GARTH_BRAIN;
+    const hasClaude = !!(await which(process.env.GARTH_CLAUDE_BIN ?? "claude"));
+    const kind = want === "api" || (!want && !hasClaude) ? "api" : "claude-code";
+    if (kind === "claude-code") {
+      this.brain = new ClaudeCodeBrain({
+        cwd: this.opts.repoRoot,
+        systemPrompt: PERSONA + "\n" + selfModification(this.opts.repoRoot, this.opts.supervised),
+        sessionId: this.world.garthSession,
+        onSession: (id) => {
+          this.world.garthSession = id;
+          this.world.changed();
+        },
+        mcpBridge: path.join(this.opts.repoRoot, "apps/hq/bin/mcp-bridge.mjs"),
+        hqApi: this.opts.hqApi,
+        hqToken: this.opts.hqToken,
+      });
+      (this.brain as ClaudeCodeBrain).warm();
+    } else {
+      this.brain = new ApiBrain(this.run);
+    }
+    console.log(`[garth] brain: ${kind}`);
+    return kind;
+  }
+
+  /** Tool endpoint for the MCP bridge. */
+  tools = () => TOOLS;
+  callTool = (name: string, input: Record<string, unknown>) => this.run(name, input);
+
   /** Operator typed something. */
   handleUser(text: string) {
     this.world.say("user", text);
-    this.enqueue(text, true);
+    this.enqueue(text);
   }
 
   /** Operator answered a decision. */
   handleDecision(question: string, answer: string, taskId?: string) {
-    this.world.say("user", `${answer}`);
-    this.enqueue(`[decision] "${question}" → ${answer}${taskId ? ` (task ${taskId})` : ""}`, false);
+    this.world.say("user", answer);
+    this.enqueue(`[decision] "${question}" → ${answer}${taskId ? ` (task ${taskId})` : ""}`);
   }
 
-  private enqueue(text: string, fromUser: boolean) {
-    this.queue = this.queue.then(() => this.turn(text, fromUser)).catch((e) => {
+  /** Something happened that G.A.R.T.H. should know about (task results, restarts, typecheck failures). */
+  event(text: string) {
+    this.enqueue(`[event] ${text}`);
+  }
+
+  private enqueue(text: string) {
+    this.queue = this.queue.then(() => this.turn(text));
+  }
+
+  private setBusy(b: boolean) {
+    if (this.busy === b) return;
+    this.busy = b;
+    this.world.emit("garth.busy", b);
+  }
+
+  private async turn(text: string) {
+    await this.kind;
+    this.setBusy(true);
+    this.world.setGarthState("thinking");
+    const sink: Sink = {
+      delta: (t) => {
+        this.world.setGarthState("speaking");
+        this.world.toUi({ type: "garth.delta", text: t });
+      },
+      message: (t) => this.world.say("garth", t),
+      activity: (a) => {
+        this.world.setGarthState("thinking");
+        this.world.toUi({ type: "garth.activity", text: a });
+      },
+    };
+    try {
+      await this.brain.turn(text, sink);
+    } catch (e) {
       console.error("[garth] turn failed:", e);
       this.world.say("system", `G.A.R.T.H. error: ${(e as Error).message}`);
-      this.world.setGarthState("idle");
-    });
+    } finally {
+      this.world.toUi({ type: "garth.activity", text: "" });
+      this.world.setGarthState(this.world.notifications.some((n) => n.decision && !n.decision.answer) ? "alert" : "idle");
+      this.setBusy(false);
+    }
   }
+}
 
-  private async turn(text: string, _fromUser: boolean) {
+/** Fallback brain: the Claude API directly with a manual tool loop (no file access to the repo). */
+class ApiBrain implements Brain {
+  private client = new Anthropic();
+  private history: Anthropic.Beta.BetaMessageParam[] = [];
+  private model = process.env.GARTH_MODEL ?? "claude-opus-5-5";
+
+  constructor(private run: ToolRunner) {}
+
+  async turn(text: string, sink: Sink) {
     if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) {
-      this.world.say("system", "ANTHROPIC_API_KEY is not set, so G.A.R.T.H. cannot think. Set it in .env and restart HQ.");
-      return;
+      throw new Error("no brain available: install and sign in to Claude Code, or set ANTHROPIC_API_KEY.");
     }
     this.history.push({ role: "user", content: text });
-    this.world.setGarthState("thinking");
-
     for (let i = 0; i < 12; i++) {
       const stream = this.client.beta.messages.stream({
-        model: MODEL,
+        model: this.model,
         max_tokens: 16000,
-        system: SYSTEM,
+        system: PERSONA,
         tools: TOOLS,
         messages: this.history,
         output_config: { effort: "medium" },
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
       } as BetaMessageStreamParams);
-
-      let spoke = false;
-      stream.on("text", (delta) => {
-        if (!spoke) this.world.setGarthState("speaking"), (spoke = true);
-        this.world.toUi({ type: "garth.delta", text: delta });
-      });
+      stream.on("text", (d) => sink.delta(d));
       const msg = await stream.finalMessage();
       this.history.push({ role: "assistant", content: msg.content });
-
       const said = msg.content.filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-      if (said) this.world.say("garth", said);
-
-      if (msg.stop_reason === "refusal") {
-        this.world.say("system", "G.A.R.T.H. declined that request.");
-        break;
-      }
+      if (said) sink.message(said);
+      if (msg.stop_reason === "refusal") throw new Error("declined that request");
       const uses = msg.content.filter((b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use");
-      if (msg.stop_reason !== "tool_use" || uses.length === 0) break;
-
-      this.world.setGarthState("thinking");
+      if (msg.stop_reason !== "tool_use" || uses.length === 0) return;
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       for (const u of uses) {
+        sink.activity(u.name.replace(/_/g, " "));
         try {
-          const out = await this.runTool(u.name, u.input as Record<string, string | string[]>);
+          const out = await this.run(u.name, u.input as Record<string, unknown>);
           results.push({ type: "tool_result", tool_use_id: u.id, content: typeof out === "string" ? out : JSON.stringify(out) });
         } catch (e) {
           results.push({ type: "tool_result", tool_use_id: u.id, content: `error: ${(e as Error).message}`, is_error: true });
         }
       }
       this.history.push({ role: "user", content: results });
-    }
-    this.world.setGarthState(this.world.notifications.some((n) => n.decision && !n.decision.answer) ? "alert" : "idle");
-  }
-
-  private async runTool(name: string, input: Record<string, string | string[]>): Promise<unknown> {
-    const s = (k: string) => input[k] as string | undefined;
-    switch (name) {
-      case "fleet_status": {
-        const snap = this.world.snapshot();
-        return {
-          outposts: snap.outposts.map((o) => ({ id: o.id, name: o.name, status: o.status, platform: o.platform, home: o.home, harnesses: o.harnesses.filter((h) => h.available).map((h) => h.id) })),
-          agents: snap.agents,
-          tasks: snap.tasks.slice(0, 20).map((t) => ({ id: t.id, title: t.title, status: t.status, outpostId: t.outpostId, harness: t.harness, lane: t.lane })),
-        };
-      }
-      case "dispatch_task": {
-        const task = this.tasks.create({
-          title: s("title")!, instruction: s("instruction")!, outpostId: s("outpostId")!,
-          harness: s("harness") as Task["harness"], lane: (s("lane") as Task["lane"]) ?? "local", cwd: s("cwd"), createdBy: "garth",
-        });
-        await this.tasks.dispatch(task);
-        return { taskId: task.id, status: task.status, error: task.error };
-      }
-      case "task_status": {
-        const t = this.world.tasks.get(s("taskId")!);
-        if (!t) throw new Error("no such task");
-        return { ...t, events: t.events.slice(-15) };
-      }
-      case "cancel_task":
-        await this.tasks.cancel(s("taskId")!);
-        return "cancelled";
-      case "send_to_task":
-        await this.tasks.send(s("taskId")!, s("text")!);
-        return "sent";
-      case "outpost_fs":
-        return this.fleet.request(s("outpostId")!, s("op") === "list" ? "fs.list" : "fs.read", { path: s("path")!, maxBytes: 20_000 });
-      case "outpost_exec":
-        return this.fleet.request(s("outpostId")!, "exec", { cmd: s("cmd")!, cwd: s("cwd"), timeoutMs: 20_000 });
-      case "notify_user":
-        this.world.notify({ level: s("level") as "info", title: s("title")!, body: s("body"), taskId: s("taskId") });
-        return "posted";
-      case "request_decision":
-        this.world.notify({ level: "warn", title: s("question")!, taskId: s("taskId"), decision: { question: s("question")!, options: input.options as string[] } });
-        return "asked; stop and wait for the operator's answer";
-      default:
-        throw new Error(`unknown tool ${name}`);
     }
   }
 }

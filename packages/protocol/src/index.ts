@@ -174,6 +174,7 @@ export type HqToOutpost = z.infer<typeof HqToOutpost>;
 export type HqToUi =
   | { type: "snapshot"; state: Snapshot }
   | { type: "garth.delta"; text: string }
+  | { type: "garth.activity"; text: string }
   | { type: "task.event"; taskId: string; event: TaskEvent };
 
 // ───────────────────── helpers ─────────────────────

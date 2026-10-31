@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { post, useStore } from "../store";
+import { tts } from "../tts";
 
 /** The one persistent control: a command line to G.A.R.T.H., its latest words, and anything that needs you. */
 export function Command() {
   const state = useStore((s) => s.state);
   const streaming = useStore((s) => s.streaming);
   const select = useStore((s) => s.select);
+  const activity = useStore((s) => s.activity);
+  const voiceOn = useStore((s) => s.voiceOn);
+  const setVoice = useStore((s) => s.setVoice);
   const [text, setText] = useState("");
   const [panel, setPanel] = useState<null | "history" | "inbox">(null);
   const input = useRef<HTMLInputElement>(null);
@@ -24,6 +28,7 @@ export function Command() {
         e.preventDefault();
         input.current?.focus();
       } else if (e.key === "Escape") {
+        tts.stop();
         setPanel(null);
         select(null);
         input.current?.blur();
@@ -88,6 +93,7 @@ export function Command() {
         </div>
       )}
 
+      {activity && !panel && !decision && <div className="activity">{activity}</div>}
       {caption && !panel && !decision && (
         <div className={`caption ${streaming ? "live" : ""}`} onClick={() => setPanel("history")} title="Show transcript">
           {caption}
@@ -107,6 +113,18 @@ export function Command() {
           onKeyDown={(e) => e.key === "Enter" && send()}
         />
         <kbd>/</kbd>
+        {tts.available && (
+          <button className={`voice ${voiceOn ? "on" : ""}`} onClick={() => setVoice(!voiceOn)} title={voiceOn ? "Mute G.A.R.T.H. (Esc stops speech)" : "Unmute G.A.R.T.H."}>
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
+              {voiceOn ? (
+                <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              ) : (
+                <path d="M16.5 9.5l5 5m0-5l-5 5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              )}
+            </svg>
+          </button>
+        )}
         <button className={`badge ${unread ? "hot" : ""}`} onClick={toggleInbox} title="Inbox">
           {unread || "◇"}
         </button>

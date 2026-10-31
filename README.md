@@ -8,9 +8,10 @@ See [PLAN.md](PLAN.md) for architecture and milestones, [SUGGESTIONS.md](SUGGEST
 ## Run it
 
 ```bash
-cp .env.example .env     # set HQ_TOKEN and ANTHROPIC_API_KEY
+cp .env.example .env     # set HQ_TOKEN
+claude auth login        # G.A.R.T.H. and Claude Code tasks use this machine's Claude Code login
 pnpm install
-pnpm dev                 # HQ on :4800 (with embedded local Outpost) + Vite UI on :5180
+pnpm dev                 # supervised HQ on :4800 (with embedded local Outpost) + Vite UI on :5180
 ```
 
 Open http://localhost:5180. Production-style: `pnpm build && pnpm hq` serves the built UI from :4800.
@@ -34,6 +35,17 @@ It appears on the graph within a second. Put HQ on a tailnet or VPN rather than 
 | `apps/hq` | Headquarters server: fleet registry, task lifecycle, G.A.R.T.H., HTTP/WS API |
 | `apps/outpost` | Outpost daemon: dials HQ, runs fs/exec ops and harness adapters |
 | `apps/web` | Node-graph UI (React + React Flow) |
+
+## G.A.R.T.H.
+
+- **Brain**: a persistent Claude Code session on the HQ machine (`apps/hq/src/garth-cc.ts`), working in this repo. Fleet tools reach it through a dependency-free MCP bridge (`apps/hq/bin/mcp-bridge.mjs` → `/api/garth/tools`). The session id is saved in `data/hq.json`, so the conversation survives restarts. Without Claude Code it falls back to the Claude API (`GARTH_BRAIN=api`, needs `ANTHROPIC_API_KEY`).
+- **Voice**: replies stream token by token to the UI and are spoken sentence by sentence with the browser's speech synthesis. Toggle with the speaker button; Esc stops speech.
+- **Self-modification**: G.A.R.T.H. may edit Headquarters, Outposts, the UI, and itself. `pnpm dev` runs HQ under `scripts/supervise.mjs`, which:
+  - restarts on changes to `apps/hq`, `apps/outpost`, `packages/protocol`, but waits while G.A.R.T.H. is mid-turn or agents are running on this machine;
+  - typechecks first; on failure the old code keeps running and G.A.R.T.H. is sent the errors;
+  - if new code from G.A.R.T.H. crashes on boot, stashes just the files it changed (`git stash list`, look for `hq-autorevert`) and restarts on the previous code.
+  - `apps/web` changes hot-reload without a restart.
+- Settings: `GARTH_ALLOWED_TOOLS` (default `mcp__hq Bash Read Edit Write Glob Grep WebSearch WebFetch`), `GARTH_PERMISSION_MODE` (default `acceptEdits`), `GARTH_CC_MODEL`.
 
 ## Harness notes
 

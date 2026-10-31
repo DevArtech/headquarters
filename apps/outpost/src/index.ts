@@ -8,6 +8,7 @@ import WebSocket from "ws";
 import { HqToOutpost, Ops as OpSchemas, type OutpostToHq, type Outpost as OutpostInfo } from "@hq/protocol";
 import { adapters } from "./harness/index.js";
 import { Ops } from "./ops.js";
+export { cleanEnv, which } from "./harness/proc.js";
 
 export interface OutpostOptions {
   url: string; // ws://host:port/ws/outpost

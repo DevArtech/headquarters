@@ -28,6 +28,18 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
     return c.json({ ok: true });
   });
 
+  // G.A.R.T.H.'s tools, called by the MCP bridge that Claude Code spawns. Bearer-token protected.
+  const authed = (h?: string) => h?.replace(/^Bearer /, "") === token;
+  app.get("/api/garth/tools", (c) => (authed(c.req.header("authorization")) ? c.json(garth.tools()) : c.json({ error: "unauthorized" }, 401 as 400)));
+  app.post("/api/garth/tools/:name", async (c) => {
+    if (!authed(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401 as 400);
+    const input = await c.req.json().catch(() => ({}));
+    return garth
+      .callTool(c.req.param("name"), input)
+      .then((result) => c.json({ result: result ?? "ok" }))
+      .catch((e) => c.json({ error: (e as Error).message }, 400));
+  });
+
   app.post("/api/tasks", async (c) => {
     const body = await c.req.json();
     return json(c, async () => {

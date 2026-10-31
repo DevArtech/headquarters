@@ -9,6 +9,7 @@ interface Persisted {
   tasks: Task[];
   notifications: Notification[];
   transcript: GarthMessage[];
+  garthSession?: string;
 }
 
 /**
@@ -22,6 +23,8 @@ export class World extends EventEmitter {
   tasks = new Map<string, Task>();
   notifications: Notification[] = [];
   garth: { state: GarthState; transcript: GarthMessage[] } = { state: "idle", transcript: [] };
+  /** Claude Code session id for G.A.R.T.H., so the conversation survives restarts. */
+  garthSession?: string;
 
   private file: string;
   private saveTimer: NodeJS.Timeout | null = null;
@@ -40,6 +43,7 @@ export class World extends EventEmitter {
         }
         this.notifications = p.notifications ?? [];
         this.garth.transcript = p.transcript ?? [];
+        this.garthSession = p.garthSession;
       } catch (e) {
         console.error("[world] could not load state:", e);
       }
@@ -93,6 +97,7 @@ export class World extends EventEmitter {
       tasks: [...this.tasks.values()],
       notifications: this.notifications,
       transcript: this.garth.transcript,
+      garthSession: this.garthSession,
     };
     fs.writeFile(this.file, JSON.stringify(p), (err) => err && console.error("[world] save failed:", err));
   }
