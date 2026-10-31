@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@10.15.0",
   "scripts": {
-    "dev": "pnpm -r --parallel --stream run dev",
+    "dev": "pnpm --filter @hq/hq --filter @hq/web --parallel --stream run dev",
     "hq": "pnpm --filter @hq/hq dev",
     "outpost": "pnpm --filter @hq/outpost dev",
     "web": "pnpm --filter @hq/web dev",

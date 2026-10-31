@@ -1,22 +1,40 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { TaskStatus } from "@hq/protocol";
+import { Orb } from "../components/Orb";
 import type { AgentNode, HqNode, OutpostNode, TaskNode } from "./layout";
 
+const CENTER = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
 const handles = (
   <>
-    <Handle type="target" position={Position.Top} />
-    <Handle type="source" position={Position.Bottom} />
+    <Handle type="target" position={Position.Top} style={CENTER} />
+    <Handle type="source" position={Position.Bottom} style={CENTER} />
   </>
 );
 
+const GARTH_STATE: Record<string, string> = {
+  idle: "standing by",
+  thinking: "routing",
+  speaking: "transmitting",
+  alert: "awaiting your call",
+};
+
+const TASK_STATE: Record<TaskStatus, string> = {
+  queued: "queued",
+  running: "in progress",
+  needs_input: "needs you",
+  done: "complete",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
 export function HqNodeView({ data }: NodeProps<HqNode>) {
   return (
-    <div className="node hq">
+    <div className={`hub ${data.garthState}`}>
       {handles}
-      <div className="kind">◈ Headquarters</div>
-      <div className="title">{data.name}</div>
-      <div className="meta" style={{ justifyContent: "center" }}>
-        <span className="chip on">G.A.R.T.H. {data.garthState}</span>
-        <span className="chip">{data.online} online</span>
+      <Orb state={data.garthState} size={360} />
+      <div className="hub-label">
+        <b>G.A.R.T.H.</b>
+        <span>{GARTH_STATE[data.garthState] ?? data.garthState}</span>
       </div>
     </div>
   );
@@ -24,35 +42,37 @@ export function HqNodeView({ data }: NodeProps<HqNode>) {
 
 export function OutpostNodeView({ data }: NodeProps<OutpostNode>) {
   const o = data.outpost;
+  const load = Math.max(0.03, Math.min(1, o.load ?? 0));
   return (
-    <div className={`node outpost ${o.status} ${o.embedded ? "embedded" : ""}`}>
+    <div className={`node outpost ${o.status}`}>
       {handles}
-      <div className="kind"><i className={`dot ${o.status === "online" ? "on" : "off"}`} />{o.embedded ? "Local outpost" : "Outpost"}</div>
-      <div className="title">{o.name}</div>
-      <div className="meta">
-        {o.harnesses.filter((h) => h.available).map((h) => <span key={h.id} className="chip on">{h.id}</span>)}
-        {data.active > 0 && <span className="chip">{data.active} active</span>}
+      <div className="kind">
+        <span className="glyph">⬢</span>
+        {o.embedded ? "hq outpost" : "outpost"}
+        <i className={`led ${o.status}`} />
       </div>
+      <div className="title">{o.name.replace(".local", "")}</div>
+      <div className="harness">
+        {o.harnesses.filter((h) => h.available).map((h) => <span key={h.id}>{h.id}</span>)}
+      </div>
+      <div className="meter"><i style={{ width: `${load * 100}%` }} /></div>
     </div>
   );
 }
 
 export function TaskNodeView({ data }: NodeProps<TaskNode>) {
   const t = data.task;
-  const running = t.status === "running";
-  const last = [...t.events].reverse().find((e) => e.type === "tool_use" || e.type === "text");
-  const hint = last ? (last.type === "tool_use" ? `⚙ ${(last.payload as { name?: string })?.name ?? "tool"}` : String(last.payload).slice(0, 48)) : "";
   return (
     <div className={`node task ${t.lane} ${t.status}`}>
       {handles}
-      <div className="kind">{t.lane === "cloud" ? "☁ cloud" : "▣ local"} · {t.harness}</div>
-      <div className="title" title={t.title}>{t.title}</div>
-      <div className="meta">
-        <span className={`status ${t.status}`}>{t.status.replace("_", " ")}</span>
-        {t.createdBy === "garth" && <span className="chip">via G.A.R.T.H.</span>}
+      <div className="kind">
+        <span className="glyph">{t.lane === "cloud" ? "☁" : "▣"}</span>
+        {t.harness}
+        <i className={`led ${t.status}`} />
       </div>
-      {hint && <div className="meta" style={{ opacity: 0.8 }}>{hint}</div>}
-      {running && <span className="ticker" />}
+      <div className="title" title={t.title}>{t.title}</div>
+      <div className="state">{TASK_STATE[t.status]}</div>
+      {t.status === "running" && <div className="scan" />}
     </div>
   );
 }
@@ -60,11 +80,15 @@ export function TaskNodeView({ data }: NodeProps<TaskNode>) {
 export function AgentNodeView({ data }: NodeProps<AgentNode>) {
   const a = data.agent;
   return (
-    <div className="node agent">
+    <div className={`node task ${a.lane}`}>
       {handles}
-      <div className="kind">{a.lane === "cloud" ? "☁ cloud session" : "▣ session"} · {a.harness}</div>
+      <div className="kind">
+        <span className="glyph">{a.lane === "cloud" ? "☁" : "▣"}</span>
+        {a.harness} session
+        <i className={`led ${a.status}`} />
+      </div>
       <div className="title">{a.title ?? a.sessionId ?? a.id}</div>
-      <div className="meta"><span className={`status ${a.status}`}>{a.status}</span></div>
+      <div className="state">{a.status}</div>
     </div>
   );
 }

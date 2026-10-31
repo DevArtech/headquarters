@@ -5,9 +5,7 @@ import { post, useStore } from "../store";
 export function Inspector() {
   const state = useStore((s) => s.state);
   const sel = useStore((s) => s.selected);
-  if (!state) return null;
-  if (!sel) return <div className="empty">Select a node, or dispatch directly below.<br /><br /><QuickDispatch outposts={state.outposts} /></div>;
-  if (sel.kind === "hq") return <div className="inspector"><Row k="name" v={state.hq.name} /><Row k="up since" v={new Date(state.hq.startedAt).toLocaleString()} /><Row k="tasks" v={String(state.tasks.length)} /></div>;
+  if (!state || !sel || sel.kind === "hq") return null;
   if (sel.kind === "outpost") {
     const o = state.outposts.find((x) => x.id === sel.id);
     return o ? <OutpostView o={o} /> : null;
@@ -17,7 +15,12 @@ export function Inspector() {
     return t ? <TaskView t={t} /> : null;
   }
   const a = state.agents.find((x) => x.id === sel.id);
-  return a ? <div className="inspector"><Row k="agent" v={a.id} /><Row k="harness" v={a.harness} /><Row k="lane" v={a.lane} /><Row k="status" v={a.status} /><Row k="session" v={a.sessionId ?? "—"} /></div> : null;
+  return a ? (
+    <div className="inspector">
+      <div className="h">{a.title ?? a.id}</div>
+      <Row k="harness" v={a.harness} /><Row k="lane" v={a.lane} /><Row k="status" v={a.status} /><Row k="session" v={a.sessionId ?? "—"} />
+    </div>
+  ) : null;
 }
 
 const Row = ({ k, v }: { k: string; v: string }) => <div className="row"><span>{k}</span><b>{v}</b></div>;
@@ -27,7 +30,7 @@ function TaskView({ t }: { t: Task }) {
   const active = t.status === "running" || t.status === "needs_input" || t.status === "queued";
   return (
     <div className="inspector">
-      <div style={{ fontWeight: 600 }}>{t.title}</div>
+      <div className="h">{t.title}</div>
       <Row k="status" v={t.status} />
       <Row k="where" v={`${t.harness} · ${t.lane}`} />
       <Row k="cwd" v={t.cwd ?? "~"} />
@@ -65,7 +68,7 @@ function OutpostView({ o }: { o: Outpost }) {
   const parent = dir.replace(/\/[^/]+\/?$/, "") || "/";
   return (
     <div className="inspector">
-      <div style={{ fontWeight: 600 }}>{o.name}</div>
+      <div className="h">{o.name}</div>
       <Row k="status" v={o.status} />
       <Row k="platform" v={o.platform} />
       <Row k="harnesses" v={o.harnesses.map((h) => `${h.id}${h.available ? "" : " (missing)"}`).join(", ")} />
@@ -97,7 +100,7 @@ function QuickDispatch({ outposts, cwd }: { outposts: Outpost[]; cwd?: string })
       .then(() => (setTitle(""), setInstruction("")))
       .catch((e) => alert(e.message));
   return (
-    <div className="form" style={{ textAlign: "left" }}>
+    <div className="form">
       <div className="row"><span>dispatch directly</span></div>
       <select value={outpostId} onChange={(e) => setOutpostId(e.target.value)}>{online.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
       <div style={{ display: "flex", gap: 6 }}>

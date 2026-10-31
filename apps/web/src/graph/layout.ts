@@ -1,4 +1,7 @@
 import type { Edge, Node } from "@xyflow/react";
+
+export type ConduitData = { kind: "link" | "cloud" | "offline"; active: boolean; trimStart?: number };
+export type ConduitEdge = Edge<ConduitData, "conduit">;
 import type { Agent, Outpost, Snapshot, Task } from "@hq/protocol";
 
 export type HqNode = Node<{ name: string; garthState: string; online: number }, "hq">;
@@ -8,14 +11,18 @@ export type AgentNode = Node<{ agent: Agent }, "agent">;
 export type AnyNode = HqNode | OutpostNode | TaskNode | AgentNode;
 
 const RECENT_MS = 10 * 60_000;
-const R_OUTPOST = 380;
-const R_LOCAL = 210;
-const R_CLOUD = 330;
+const R_OUTPOST = 460;
+const HUB_RIM = 178; // G.A.R.T.H. core radius: conduits start at its bezel, not its centre
+const R_LOCAL = 300;
+const R_CLOUD = 480;
 
 /** Radial layout: HQ in the centre, outposts on a ring, each outpost's work fanned out away from HQ. */
-export function layout(s: Snapshot): { nodes: AnyNode[]; edges: Edge[] } {
+export function layout(s: Snapshot): { nodes: AnyNode[]; edges: ConduitEdge[] } {
   const nodes: AnyNode[] = [];
-  const edges: Edge[] = [];
+  const edges: ConduitEdge[] = [];
+  const link = (id: string, source: string, target: string, kind: ConduitData["kind"], active: boolean): ConduitEdge => ({
+    id, source, target, type: "conduit", data: { kind, active, trimStart: source === "hq" ? HUB_RIM : 0 },
+  });
   const now = Date.now();
 
   nodes.push({ id: "hq", type: "hq", position: { x: 0, y: 0 }, data: { name: s.hq.name, garthState: s.garth.state, online: s.outposts.filter((o) => o.status === "online").length } });
@@ -24,7 +31,7 @@ export function layout(s: Snapshot): { nodes: AnyNode[]; edges: Edge[] } {
   const n = Math.max(outposts.length, 1);
 
   outposts.forEach((o, i) => {
-    const angle = -Math.PI / 2 + (i / n) * Math.PI * 2 + (n === 1 ? Math.PI : 0);
+    const angle = (i / n) * Math.PI * 2;
     const ox = Math.cos(angle) * R_OUTPOST;
     const oy = Math.sin(angle) * R_OUTPOST;
 
@@ -33,7 +40,7 @@ export function layout(s: Snapshot): { nodes: AnyNode[]; edges: Edge[] } {
     const orphanAgents = s.agents.filter((a) => a.outpostId === o.id && (!a.taskId || !s.tasks.some((t) => t.id === a.taskId)));
 
     nodes.push({ id: o.id, type: "outpost", position: { x: ox, y: oy }, data: { outpost: o, active: tasks.filter(isActive).length } });
-    edges.push({ id: `hq-${o.id}`, source: "hq", target: o.id, animated: o.status === "online", className: o.status === "online" ? "" : "offline" });
+    edges.push(link(`hq-${o.id}`, "hq", o.id, o.status === "online" ? "link" : "offline", tasks.some(isActive)));
 
     const local = [...tasks.filter((t) => t.lane === "local"), ...orphanAgents.filter((a) => a.lane === "local")];
     const cloud = [...tasks.filter((t) => t.lane === "cloud"), ...orphanAgents.filter((a) => a.lane === "cloud")];
@@ -54,10 +61,10 @@ export function layout(s: Snapshot): { nodes: AnyNode[]; edges: Edge[] } {
         if ("instruction" in it) {
           const agent = agentByTask.get(it.id);
           nodes.push({ id: it.id, type: "task", position: pos, data: { task: it, agent } });
-          edges.push({ id: `${o.id}-${it.id}`, source: o.id, target: it.id, animated: it.status === "running", className: [it.lane === "cloud" ? "cloud" : "", it.status === "running" ? "running" : ""].join(" ") });
+          edges.push(link(`${o.id}-${it.id}`, o.id, it.id, it.lane === "cloud" ? "cloud" : "link", it.status === "running"));
         } else {
           nodes.push({ id: it.id, type: "agent", position: pos, data: { agent: it } });
-          edges.push({ id: `${o.id}-${it.id}`, source: o.id, target: it.id, animated: it.status === "running", className: it.lane === "cloud" ? "cloud" : "" });
+          edges.push(link(`${o.id}-${it.id}`, o.id, it.id, it.lane === "cloud" ? "cloud" : "link", it.status === "running"));
         }
       });
     }

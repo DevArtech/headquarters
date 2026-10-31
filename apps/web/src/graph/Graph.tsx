@@ -1,6 +1,7 @@
-import { Background, BackgroundVariant, Controls, ReactFlow, type Node } from "@xyflow/react";
-import { useMemo } from "react";
+import { Background, BackgroundVariant, ReactFlow, useReactFlow, type Node } from "@xyflow/react";
+import { useEffect, useMemo } from "react";
 import { useStore } from "../store";
+import { edgeTypes } from "./edges";
 import { layout } from "./layout";
 import { nodeTypes } from "./nodes";
 
@@ -10,41 +11,47 @@ export function Graph() {
   const select = useStore((s) => s.select);
 
   const { nodes, edges } = useMemo(() => (state ? layout(state) : { nodes: [], edges: [] }), [state]);
-  const selId = selected && selected.kind !== "hq" ? selected.id : selected ? "hq" : null;
+  const selId = selected && selected.kind !== "hq" ? selected.id : null;
   const withSel = useMemo(() => nodes.map((n) => ({ ...n, selected: n.id === selId })), [nodes, selId]);
 
   const onNodeClick = (_: unknown, n: Node) => {
-    if (n.type === "hq") select({ kind: "hq" });
-    else if (n.type === "outpost") select({ kind: "outpost", id: n.id });
-    else if (n.type === "task") select({ kind: "task", id: n.id });
-    else if (n.type === "agent") select({ kind: "agent", id: n.id });
+    if (n.type === "hq") {
+      select(null);
+      document.getElementById("garth-input")?.focus();
+    } else select({ kind: n.type as "outpost" | "task" | "agent", id: n.id });
   };
 
   return (
-    <>
+    <div className="graph">
       <ReactFlow
         nodes={withSel}
         edges={edges}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
+        nodeOrigin={[0.5, 0.5]}
         onNodeClick={onNodeClick}
         onPaneClick={() => select(null)}
         nodesDraggable={false}
         nodesConnectable={false}
-        elementsSelectable
         fitView
-        fitViewOptions={{ padding: 0.25 }}
-        minZoom={0.3}
-        maxZoom={1.8}
+        fitViewOptions={{ padding: 0.28 }}
+        minZoom={0.2}
+        maxZoom={2}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={28} size={1} color="rgba(99,179,237,0.18)" />
-        <Controls showInteractive={false} />
+        <Background variant={BackgroundVariant.Dots} gap={34} size={1} color="rgba(99,179,237,0.16)" />
+        <AutoFit count={nodes.length} />
       </ReactFlow>
-      <div className="legend">
-        <span><i style={{ borderColor: "var(--teal)" }} />local</span>
-        <span><i style={{ borderColor: "var(--violet)", borderStyle: "dashed" }} />cloud</span>
-        <span><i style={{ borderColor: "var(--amber)" }} />needs you</span>
-      </div>
-    </>
+    </div>
   );
+}
+
+/** Re-frame the graph whenever nodes appear or disappear. */
+function AutoFit({ count }: { count: number }) {
+  const { fitView } = useReactFlow();
+  useEffect(() => {
+    const id = setTimeout(() => fitView({ padding: 0.28, duration: 700 }), 80);
+    return () => clearTimeout(id);
+  }, [count, fitView]);
+  return null;
 }
