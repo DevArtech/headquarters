@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { GarthMessage } from "@hq/protocol";
 import { post, useStore } from "../store";
 import { tts } from "../tts";
 
@@ -52,17 +53,7 @@ export function Command() {
 
   return (
     <div className="command">
-      {panel === "history" && (
-        <div className="sheet">
-          {(transcript ?? []).length === 0 && <div className="sheet-empty">No transmissions yet.</div>}
-          {(transcript ?? []).map((m) => (
-            <div key={m.id} className={`line ${m.role}`}>
-              <span className="who">{m.role === "garth" ? "G.A.R.T.H." : m.role === "user" ? "YOU" : "SYS"}</span>
-              <span className="what">{m.text}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {panel === "history" && <History transcript={transcript ?? []} />}
       {panel === "inbox" && (
         <div className="sheet">
           {(notes ?? []).length === 0 && <div className="sheet-empty">Nothing needs you.</div>}
@@ -132,3 +123,55 @@ export function Command() {
     </div>
   );
 }
+
+/**
+ * Transcript sheet. Opens scrolled to the latest message and stays pinned to the bottom as new text
+ * arrives, unless the operator has scrolled up to read. G.A.R.T.H.'s in-progress reply is shown as a
+ * live last line.
+ */
+function History({ transcript }: { transcript: GarthMessage[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const pinned = useRef(true);
+  const streaming = useStore((s) => s.streaming);
+  // before paint, so the sheet never flashes at the top
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && pinned.current) el.scrollTop = el.scrollHeight;
+  }, [transcript.length, streaming]);
+  return (
+    <div
+      className="sheet"
+      ref={ref}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+      }}
+    >
+      {transcript.length === 0 && !streaming && <div className="sheet-empty">No transmissions yet.</div>}
+      <Lines transcript={transcript} />
+      {streaming && (
+        <div className="line garth live">
+          <span className="who">G.A.R.T.H.</span>
+          <span className="what">{streaming}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Re-renders only when a message is added, not on every snapshot or streamed token. */
+const Lines = memo(
+  function Lines({ transcript }: { transcript: GarthMessage[] }) {
+    return (
+      <>
+        {transcript.map((m) => (
+          <div key={m.id} className={`line ${m.role}`}>
+            <span className="who">{m.role === "garth" ? "G.A.R.T.H." : m.role === "user" ? "YOU" : "SYS"}</span>
+            <span className="what">{m.text}</span>
+          </div>
+        ))}
+      </>
+    );
+  },
+  (a, b) => a.transcript.length === b.transcript.length && a.transcript[a.transcript.length - 1]?.id === b.transcript[b.transcript.length - 1]?.id,
+);

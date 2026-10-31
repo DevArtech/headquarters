@@ -191,6 +191,8 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .line.garth .who { color: var(--cyan); }
 .line.system .what { color: var(--amber); font-family: var(--mono); font-size: 11px; }
 .line .what { white-space: pre-wrap; word-break: break-word; }
+.line.live .what { color: var(--teal); }
+.line.live .what::after { content: "▍"; animation: blink 0.8s infinite; margin-left: 2px; }
 .note { cursor: pointer; padding: 8px 10px; border-left: 2px solid var(--muted); background: rgba(255, 255, 255, 0.02); }
 .note.info { border-left-color: var(--cyan); }
 .note.success { border-left-color: var(--teal); }
