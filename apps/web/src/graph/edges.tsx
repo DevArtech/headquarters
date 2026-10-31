@@ -15,12 +15,16 @@ export function ConduitEdgeView({ sourceX, sourceY, targetX, targetY, data }: Ed
       <path d={path} className="conduit-core" />
       {data?.active && (
         <>
-          <circle r={3.2} className="pulse out">
+          <g className="pulse out">
+            <circle r={8} className="halo" />
+            <circle r={3.2} className="dot" />
             <animateMotion dur="1.8s" repeatCount="indefinite" path={path} />
-          </circle>
-          <circle r={2.2} className="pulse back">
+          </g>
+          <g className="pulse back">
+            <circle r={6} className="halo" />
+            <circle r={2.2} className="dot" />
             <animateMotion dur="2.6s" repeatCount="indefinite" path={path} keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
-          </circle>
+          </g>
         </>
       )}
     </g>

@@ -32,6 +32,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .graph { position: absolute; inset: 0; }
 .grain {
   position: absolute; inset: 0; pointer-events: none; z-index: 30;
+  will-change: transform; transform: translateZ(0);
   background:
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.012) 0 1px, transparent 1px 3px),
     radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
@@ -66,15 +67,18 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .conduit.cloud .conduit-glow { stroke: rgba(155, 123, 255, 0.08); }
 .conduit.offline .conduit-core { stroke: rgba(111, 131, 158, 0.25); stroke-dasharray: 2 8; }
 .conduit.offline .conduit-glow { stroke: transparent; }
-.pulse { filter: drop-shadow(0 0 4px currentColor); }
-.pulse.out { fill: #e9fffb; color: var(--teal); }
-.pulse.back { fill: var(--cyan); color: var(--cyan); }
-.conduit.cloud .pulse.out { fill: #efe9ff; color: var(--violet); }
+.pulse .halo { fill: currentColor; opacity: 0.22; }
+.pulse.out { color: var(--teal); }
+.pulse.out .dot { fill: #e9fffb; }
+.pulse.back { color: var(--cyan); }
+.pulse.back .dot { fill: var(--cyan); }
+.conduit.cloud .pulse.out { color: var(--violet); }
+.conduit.cloud .pulse.out .dot { fill: #efe9ff; }
 @keyframes flow { to { stroke-dashoffset: -12; } }
 
 /* ───────── G.A.R.T.H. hub ───────── */
 .hub { position: relative; width: 360px; height: 360px; display: grid; place-items: center; }
-.orb { display: block; }
+.orb { display: block; will-change: transform; }
 .hub-label {
   position: absolute; left: 50%; top: calc(100% + 6px); transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 4px; white-space: nowrap;
@@ -122,13 +126,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .node.task.needs_input { --accent: var(--amber); border-color: rgba(255, 181, 71, 0.5); }
 .node.task.failed, .node.task.cancelled { --accent: var(--red); }
 .node.task.done { opacity: 0.6; }
-.node .scan {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+.node .scan { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden; }
+.node .scan::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%;
   background: linear-gradient(90deg, transparent, var(--teal), transparent);
-  background-size: 40% 100%; background-repeat: no-repeat;
-  animation: scan 1.6s ease-in-out infinite;
+  animation: scan 1.6s ease-in-out infinite; will-change: transform;
 }
-@keyframes scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes scan { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 
 /* ───────── command line ───────── */
 .command {
@@ -243,3 +247,10 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .form input, .form select, .form textarea { padding: 8px 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); outline: none; color: var(--text); }
 .form input:focus, .form textarea:focus, .form select:focus { border-color: var(--line-strong); }
 .form textarea { min-height: 70px; resize: vertical; font-family: var(--display); }
+
+/* ───────── Firefox: backdrop-filter re-blurs every frame over the animated graph.
+   Swap the blur for an equivalent denser tint; the panels look the same on the dark stage. ───────── */
+@supports (-moz-appearance: none) {
+  .bar, .sheet, .drawer { backdrop-filter: none; background: rgba(6, 12, 22, 0.93); }
+  .decision { backdrop-filter: none; background: linear-gradient(180deg, rgba(40, 32, 20, 0.96), rgba(6, 12, 22, 0.96)); }
+}
