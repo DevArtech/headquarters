@@ -43,8 +43,30 @@ export function HqNodeView({ data }: NodeProps<HqNode>) {
       <div className="hub-label">
         <b>G.A.R.T.H.</b>
         <span>{GARTH_STATE[state] ?? state}</span>
+        {data.outpost && <HomeLine outpost={data.outpost} />}
       </div>
     </div>
+  );
+}
+
+/** The HQ machine as an outpost: its harnesses, under G.A.R.T.H.'s label; click to inspect it. */
+function HomeLine({ outpost }: { outpost: NonNullable<HqNode["data"]["outpost"]> }) {
+  const select = useStore((s) => s.select);
+  const harnesses = outpost.harnesses.filter((h) => h.available).map((h) => h.id);
+  return (
+    <span
+      className="nodrag nopan"
+      role="button"
+      title="Inspect the Headquarters machine: files, direct dispatch"
+      style={{ cursor: "pointer", pointerEvents: "auto", opacity: 0.8, letterSpacing: "0.22em", marginTop: 2 }}
+      onClick={(e) => {
+        e.stopPropagation(); // the core itself focuses the command line
+        select({ kind: "outpost", id: outpost.id });
+      }}
+    >
+      <i className={`led ${outpost.status}`} style={{ marginRight: 7, verticalAlign: 1 }} />
+      {harnesses.join(" · ")}
+    </span>
   );
 }
 

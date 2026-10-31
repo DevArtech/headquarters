@@ -15,7 +15,9 @@ export function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const online = state?.outposts.filter((o) => o.status === "online").length ?? 0;
+  // other devices only: outposts on the HQ machine are part of HQ (see graph/layout.ts)
+  const home = state?.outposts.find((o) => o.embedded);
+  const online = state?.outposts.filter((o) => o.status === "online" && !o.embedded && o.hostname !== home?.hostname).length ?? 0;
   const active = state?.tasks.filter((t) => t.status === "running" || t.status === "needs_input").length ?? 0;
 
   return (

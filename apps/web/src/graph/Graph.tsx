@@ -34,7 +34,7 @@ export function Graph() {
         nodesDraggable={false}
         nodesConnectable={false}
         fitView
-        fitViewOptions={{ padding: 0.28 }}
+        fitViewOptions={{ padding: 0.28, maxZoom: 1 }}
         minZoom={0.2}
         maxZoom={2}
         proOptions={{ hideAttribution: true }}
@@ -50,7 +50,7 @@ export function Graph() {
 function AutoFit({ count }: { count: number }) {
   const { fitView } = useReactFlow();
   useEffect(() => {
-    const id = setTimeout(() => fitView({ padding: 0.28, duration: 700 }), 80);
+    const id = setTimeout(() => fitView({ padding: 0.28, maxZoom: 1, duration: 700 }), 80);
     return () => clearTimeout(id);
   }, [count, fitView]);
   return null;
