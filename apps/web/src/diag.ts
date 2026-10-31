@@ -5,6 +5,8 @@
  */
 const VARIANTS: Array<[string, string[]]> = [
   ["baseline", []],
+  ["no-scanlines", ["scan"]],
+  ["no-vignette", ["vignette"]],
   ["opaque-panel", ["opaque"]],
   ["no-clip-corners", ["clip"]],
   ["no-core", ["orb"]],
@@ -14,7 +16,7 @@ const VARIANTS: Array<[string, string[]]> = [
   ["system-font", ["font"]],
   ["all-off", ["opaque", "clip", "orb", "edges", "graph", "grain", "font"]],
 ];
-const ALL = ["opaque", "clip", "orb", "edges", "graph", "grain", "font"];
+const ALL = ["opaque", "clip", "orb", "edges", "graph", "grain", "font", "scan", "vignette"];
 
 export function applyOff(list: string[]) {
   const root = document.documentElement;
