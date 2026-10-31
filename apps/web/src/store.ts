@@ -26,6 +26,21 @@ const savedChannel = () => {
   }
 };
 
+/** This page, so HQ can pick one open page to speak (kept across reloads of the same tab). */
+export const CLIENT_ID = (() => {
+  const fresh = Math.random().toString(36).slice(2, 10);
+  try {
+    const id = sessionStorage.getItem("garth.client") ?? fresh;
+    sessionStorage.setItem("garth.client", id);
+    return id;
+  } catch {
+    return fresh;
+  }
+})();
+
+/** Whether this page reads G.A.R.T.H. aloud: the one the operator last spoke from (all pages until one has). */
+const speaksHere = (s: Snapshot | null) => !s?.garth.speaker || s.garth.speaker === CLIENT_ID;
+
 /** The active channel: the chosen one if it still exists, else General, else the most recent. */
 export function activeChannelOf(s: { state: Snapshot | null; activeChannelId: string | null }): ChannelView | undefined {
   const chs = s.state?.garth.channels ?? [];
@@ -100,12 +115,13 @@ export function connect() {
         // a completed G.A.R.T.H. message landed in the active channel: the stream it came from is done
         const committed = prev?.id === next?.id && nt.length > 0 && pt.at(-1)?.id !== nt.at(-1)?.id && nt.at(-1)!.role === "garth";
         const idle = next?.state === "idle";
-        if (committed || idle) tts.flush();
+        if (speaksHere(s.state) && !speaksHere(msg.state)) tts.stop(); // the operator spoke from another page: it has the voice now
+        else if (committed || idle) tts.flush();
         return { state: msg.state, streaming: committed || idle ? "" : s.streaming };
       });
     } else if (msg.type === "garth.delta") {
       if (msg.channelId !== activeChannelOf(useStore.getState())?.id) return; // other channels speak only in their own view
-      tts.feed(msg.text);
+      if (speaksHere(useStore.getState().state)) tts.feed(msg.text);
       useStore.setState((s) => ({ streaming: s.streaming + msg.text, activity: "" }));
     } else if (msg.type === "garth.activity") {
       if (msg.channelId !== activeChannelOf(useStore.getState())?.id) return;

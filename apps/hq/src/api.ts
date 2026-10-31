@@ -24,8 +24,16 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
 
   app.get("/api/state", (c) => c.json(world.snapshot()));
 
+  // the page the operator speaks from becomes the one that reads replies aloud
+  const claimVoice = (clientId?: string) => {
+    if (!clientId || world.speaker === clientId) return;
+    world.speaker = clientId;
+    world.changed();
+  };
+
   app.post("/api/garth", async (c) => {
-    const { text, channelId } = await c.req.json<{ text: string; channelId?: string }>();
+    const { text, channelId, clientId } = await c.req.json<{ text: string; channelId?: string; clientId?: string }>();
+    claimVoice(clientId);
     garth.handleUser(channelId, text);
     return c.json({ ok: true });
   });
@@ -108,7 +116,8 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
     }),
   );
   app.post("/api/notifications/:id/answer", async (c) => {
-    const { answer } = await c.req.json<{ answer: string }>();
+    const { answer, clientId } = await c.req.json<{ answer: string; clientId?: string }>();
+    claimVoice(clientId);
     return json(c, () => {
       const n = world.notifications.find((n) => n.id === c.req.param("id"));
       if (!n?.decision) throw new Error("not a decision");

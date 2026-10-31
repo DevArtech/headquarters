@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { TaskStatus } from "@hq/protocol";
+import { BRAIN_NAME, type TaskStatus } from "@hq/protocol";
 import { Orb } from "../components/Orb";
 import { activeChannelOf, useStore } from "../store";
 import type { AgentNode, HqNode, OutpostNode, TaskNode } from "./layout";
@@ -43,29 +43,33 @@ export function HqNodeView({ data }: NodeProps<HqNode>) {
       <div className="hub-label">
         <b>G.A.R.T.H.</b>
         <span>{GARTH_STATE[state] ?? state}</span>
-        {data.outpost && <HomeLine outpost={data.outpost} />}
+        <HomeLine outpost={data.outpost} />
       </div>
     </div>
   );
 }
 
-/** The HQ machine as an outpost: its harnesses, under G.A.R.T.H.'s label; click to inspect it. */
-function HomeLine({ outpost }: { outpost: NonNullable<HqNode["data"]["outpost"]> }) {
+/** The harness the active channel thinks with, on the HQ machine's status light; click to inspect the machine. */
+function HomeLine({ outpost }: { outpost: HqNode["data"]["outpost"] }) {
   const select = useStore((s) => s.select);
-  const harnesses = outpost.harnesses.filter((h) => h.available).map((h) => h.id);
+  const connected = useStore((s) => s.connected);
+  const brain = useStore((s) => activeChannelOf(s)?.brain);
+  const model = useStore((s) => activeChannelOf(s)?.model);
+  if (!brain) return null;
   return (
     <span
       className="nodrag nopan"
-      role="button"
-      title="Inspect the Headquarters machine: files, direct dispatch"
-      style={{ cursor: "pointer", pointerEvents: "auto", opacity: 0.8, letterSpacing: "0.22em", marginTop: 2 }}
+      role={outpost ? "button" : undefined}
+      title={outpost ? "Inspect the Headquarters machine: files, direct dispatch" : undefined}
+      style={{ cursor: outpost ? "pointer" : undefined, pointerEvents: "auto", opacity: 0.8, letterSpacing: "0.22em", marginTop: 2 }}
       onClick={(e) => {
         e.stopPropagation(); // the core itself focuses the command line
-        select({ kind: "outpost", id: outpost.id });
+        if (outpost) select({ kind: "outpost", id: outpost.id });
       }}
     >
-      <i className={`led ${outpost.status}`} style={{ marginRight: 7, verticalAlign: 1 }} />
-      {harnesses.join(" · ")}
+      <i className={`led ${outpost?.status ?? (connected ? "online" : "offline")}`} style={{ marginRight: 7, verticalAlign: 1 }} />
+      {BRAIN_NAME[brain]}
+      {model && ` · ${model}`}
     </span>
   );
 }

@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { BRAIN_NAME, type GarthMessage } from "@hq/protocol";
-import { activeChannelOf, post, useStore } from "../store";
+import { activeChannelOf, CLIENT_ID, post, useStore } from "../store";
 import { tts } from "../tts";
 
 /** The one persistent control: a command line to G.A.R.T.H., its latest words, and anything that needs you. */
@@ -47,7 +47,7 @@ export function Command() {
     if (!t) return;
     setText("");
     setPanel(null);
-    post("/api/garth", { text: t, channelId: channel?.id }).catch((e) => alert(e.message));
+    post("/api/garth", { text: t, channelId: channel?.id, clientId: CLIENT_ID }).catch((e) => alert(e.message));
   };
   const switchTo = (id: string) => {
     setChannel(id);
@@ -122,7 +122,7 @@ export function Command() {
           <div className="decision-q">{decision.decision!.question}</div>
           <div className="decision-opts">
             {decision.decision!.options.map((o) => (
-              <button key={o} onClick={() => post(`/api/notifications/${decision.id}/answer`, { answer: o })}>{o}</button>
+              <button key={o} onClick={() => post(`/api/notifications/${decision.id}/answer`, { answer: o, clientId: CLIENT_ID })}>{o}</button>
             ))}
           </div>
         </div>

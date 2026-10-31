@@ -33,6 +33,7 @@ interface Persisted {
   notifications: Notification[];
   channels?: Array<Omit<Channel, "state">>;
   lastTurnChannel?: string;
+  speaker?: string;
   settings?: Settings;
   // older formats, migrated
   brainDefault?: BrainChoice;
@@ -55,6 +56,11 @@ export class World extends EventEmitter {
   channels = new Map<string, Channel>();
   /** Channel whose turn ended most recently: where restart / typecheck reports go. */
   lastTurnChannel?: string;
+  /**
+   * The open page that reads G.A.R.T.H. aloud: the one the operator last spoke from. Every open page
+   * would otherwise speak each reply, so the voice repeats once per tab.
+   */
+  speaker?: string;
   /** Brains installed on this machine, preferred first (set by G.A.R.T.H. at boot). */
   brains: GarthBrainKind[] = [];
   /** Operator settings: defaults for new channels and page loads (see settings.ts). */
@@ -90,6 +96,7 @@ export class World extends EventEmitter {
           });
         }
         this.lastTurnChannel = p.lastTurnChannel;
+        this.speaker = p.speaker;
         this.settings = {
           ...this.settings,
           ...(p.brainDefault ? { brain: p.brainDefault.kind, model: p.brainDefault.model } : {}),
@@ -131,6 +138,7 @@ export class World extends EventEmitter {
           .sort((a, b) => b.updatedAt - a.updatedAt)
           .map((c) => ({ id: c.id, name: c.name, state: c.state, ...this.brainView(c), updatedAt: c.updatedAt, transcript: c.transcript.slice(-UI_TRANSCRIPT) })),
         brains: this.brains,
+        ...(this.speaker ? { speaker: this.speaker } : {}),
       },
       settings: this.settings,
     };
@@ -202,6 +210,7 @@ export class World extends EventEmitter {
       notifications: this.notifications,
       channels: [...this.channels.values()].map(({ state: _s, ...c }) => c),
       lastTurnChannel: this.lastTurnChannel,
+      speaker: this.speaker,
       settings: this.settings,
     };
     // atomic: write a temp file and rename it over the old one, so a restart mid-save can never leave a

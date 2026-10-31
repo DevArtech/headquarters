@@ -139,7 +139,7 @@ export interface Snapshot {
   agents: Agent[];
   tasks: Task[];
   notifications: Notification[];
-  garth: { state: GarthState; channels: ChannelView[]; brains: GarthBrainKind[] };
+  garth: { state: GarthState; channels: ChannelView[]; brains: GarthBrainKind[]; speaker?: string }; // speaker: the page that reads replies aloud
   settings: Settings; // channels: most recently active first; brains: available here
 }
 
