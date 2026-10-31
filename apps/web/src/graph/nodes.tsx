@@ -1,7 +1,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { TaskStatus } from "@hq/protocol";
 import { Orb } from "../components/Orb";
-import { useStore } from "../store";
+import { activeChannelOf, useStore } from "../store";
 import type { AgentNode, HqNode, OutpostNode, TaskNode } from "./layout";
 
 const CENTER = { top: "50%", left: "50%", transform: "translate(-50%, -50%)" };
@@ -30,8 +30,12 @@ const TASK_STATE: Record<TaskStatus, string> = {
 
 export function HqNodeView({ data }: NodeProps<HqNode>) {
   // the voice can still be talking after generation finishes; the core follows the voice
+  // the core shows the active channel; a pending decision anywhere turns it amber
   const voice = useStore((s) => s.voiceSpeaking);
-  const state = voice && data.garthState !== "alert" ? "speaking" : data.garthState;
+  const chState = useStore((s) => activeChannelOf(s)?.state ?? "idle");
+  const pending = useStore((s) => s.state?.notifications.some((n) => n.decision && !n.decision.answer) ?? false);
+  const base = pending ? "alert" : chState;
+  const state = voice && base !== "alert" ? "speaking" : base;
   return (
     <div className={`hub ${state}`}>
       {handles}

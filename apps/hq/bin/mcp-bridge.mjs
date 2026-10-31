@@ -10,7 +10,7 @@ import readline from "node:readline";
 
 const API = process.env.HQ_API ?? "http://127.0.0.1:4800";
 const TOKEN = process.env.HQ_TOKEN ?? "dev-token";
-const headers = { "content-type": "application/json", authorization: `Bearer ${TOKEN}` };
+const headers = { "content-type": "application/json", authorization: `Bearer ${TOKEN}`, "x-hq-channel": process.env.HQ_CHANNEL ?? "" };
 
 const send = (msg) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...msg }) + "\n");
 const reply = (id, result) => send({ id, result });

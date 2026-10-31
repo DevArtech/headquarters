@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { GarthMessage } from "@hq/protocol";
-import { post, useStore } from "../store";
+import { activeChannelOf, post, useStore } from "../store";
 import { tts } from "../tts";
 
 /** The one persistent control: a command line to G.A.R.T.H., its latest words, and anything that needs you. */
@@ -11,12 +11,15 @@ export function Command() {
   const activity = useStore((s) => s.activity);
   const voiceOn = useStore((s) => s.voiceOn);
   const setVoice = useStore((s) => s.setVoice);
+  const channel = useStore(activeChannelOf);
+  const setChannel = useStore((s) => s.setChannel);
+  const channels = state?.garth.channels ?? [];
   const [text, setText] = useState("");
-  const [panel, setPanel] = useState<null | "history" | "inbox">(null);
+  const [panel, setPanel] = useState<null | "history" | "inbox" | "channels">(null);
   const input = useRef<HTMLInputElement>(null);
 
   const notes = state?.notifications;
-  const transcript = state?.garth.transcript;
+  const transcript = channel?.transcript;
   const decision = useMemo(() => [...(notes ?? [])].reverse().find((n) => n.decision && !n.decision.answer), [notes]);
   const unread = (notes ?? []).filter((n) => !n.read && !n.decision).length;
   const lastLine = useMemo(() => [...(transcript ?? [])].reverse().find((m) => m.role !== "user"), [transcript]);
@@ -44,8 +47,17 @@ export function Command() {
     if (!t) return;
     setText("");
     setPanel(null);
-    post("/api/garth", { text: t }).catch((e) => alert(e.message));
+    post("/api/garth", { text: t, channelId: channel?.id }).catch((e) => alert(e.message));
   };
+  const switchTo = (id: string) => {
+    setChannel(id);
+    setPanel(null);
+    input.current?.focus();
+  };
+  const newChannel = () =>
+    post("/api/channels", {})
+      .then((c: { id: string }) => switchTo(c.id))
+      .catch((e) => alert(e.message));
   const toggleInbox = () => {
     setPanel((p) => (p === "inbox" ? null : "inbox"));
     for (const n of notes ?? []) if (!n.read && !n.decision) post(`/api/notifications/${n.id}/read`);
@@ -54,6 +66,37 @@ export function Command() {
   return (
     <div className="command">
       {panel === "history" && <History transcript={transcript ?? []} />}
+      {panel === "channels" && (
+        <div className="sheet">
+          <button className="new-channel" onClick={newChannel}>+ New channel</button>
+          {channels.map((c) => {
+            const last = [...c.transcript].reverse().find((m) => m.role !== "system");
+            return (
+              <div key={c.id} className={`chan ${c.id === channel?.id ? "on" : ""}`} onClick={() => switchTo(c.id)}>
+                <div className="chan-head">
+                  <span className="chan-name"># {c.name}</span>
+                  {c.state !== "idle" && <i className="led running" />}
+                  <span className="time">{ago(c.updatedAt)}</span>
+                  {c.id !== "general" && (
+                    <button
+                      className="chan-del"
+                      title="Delete channel"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!confirm(`Delete "${c.name}" and its history?`)) return;
+                        fetch(`/api/channels/${c.id}`, { method: "DELETE" }).then(() => c.id === channel?.id && setChannel("general"));
+                      }}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+                {last && <div className="chan-last">{last.role === "user" ? "You: " : ""}{last.text}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
       {panel === "inbox" && (
         <div className="sheet">
           {(notes ?? []).length === 0 && <div className="sheet-empty">Nothing needs you.</div>}
@@ -93,6 +136,9 @@ export function Command() {
 
       <div className="bar">
         <button className="sigil" onClick={() => setPanel((p) => (p === "history" ? null : "history"))} title="Transcript">◆</button>
+        <button className="chan-chip" onClick={() => setPanel((p) => (p === "channels" ? null : "channels"))} title="Channels">
+          # {channel?.name ?? "General"}
+        </button>
         <input
           id="garth-input"
           ref={input}
@@ -175,3 +221,11 @@ const Lines = memo(
   },
   (a, b) => a.transcript.length === b.transcript.length && a.transcript[a.transcript.length - 1]?.id === b.transcript[b.transcript.length - 1]?.id,
 );
+
+function ago(ts: number) {
+  const s = (Date.now() - ts) / 1000;
+  if (s < 60) return "now";
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}

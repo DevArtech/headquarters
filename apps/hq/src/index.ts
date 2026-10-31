@@ -34,6 +34,7 @@ const garth = new Garth(world, fleet, tasks, { repoRoot, hqApi: `http://127.0.0.
 const server = startApi({ world, fleet, tasks, garth, port, token, webDist: path.join(repoRoot, "apps/web/dist") });
 server.on("listening", () => {
   toSupervisor({ type: "ready" });
+  garth.warm().catch(() => {});
   // load the voice model in the background so the first spoken reply isn't delayed
   if (voiceConfig.enabled) loadVoice().catch(() => {});
 });
@@ -62,15 +63,15 @@ world.on("garth.busy", reportBusy);
 process.on("message", (m: { type: string; output?: string; byGarth?: boolean }) => {
   if (m.type === "typecheck_failed") {
     world.notify({ level: "error", title: "Code change not applied: typecheck failed", body: "Headquarters is still running the previous code." });
-    if (m.byGarth) garth.event(`Typecheck failed after your edits, so Headquarters did not restart and is still running the previous code. Fix these errors, then run the typecheck again:\n${m.output}`);
+    if (m.byGarth) garth.event(world.lastTurnChannel, `Typecheck failed after your edits, so Headquarters did not restart and is still running the previous code. Fix these errors, then run the typecheck again:\n${m.output}`);
   }
 });
 
 if (process.env.HQ_ROLLBACK) {
   const info = process.env.HQ_ROLLBACK;
   world.notify({ level: "error", title: "Reverted a change that broke Headquarters", body: info.split("\n")[0] });
-  garth.event(`Your last code change made Headquarters crash on startup, so it was rolled back and the previous code is running. ${info}\nInspect the stash, fix the problem, and reapply it.`);
+  garth.event(world.lastTurnChannel, `Your last code change made Headquarters crash on startup, so it was rolled back and the previous code is running. ${info}\nInspect the stash, fix the problem, and reapply it.`);
 } else if (process.env.HQ_RESTART_REASON) {
-  world.say("system", `Headquarters restarted (${process.env.HQ_RESTART_REASON}).`);
-  if (process.env.HQ_RESTART_BY_GARTH) garth.event("Headquarters restarted on your updated code and is healthy. Briefly confirm to the operator what changed.");
+  world.say(world.lastTurnChannel, "system", `Headquarters restarted (${process.env.HQ_RESTART_REASON}).`);
+  if (process.env.HQ_RESTART_BY_GARTH) garth.event(world.lastTurnChannel, "Headquarters restarted on your updated code and is healthy. Briefly confirm to the operator what changed.");
 }

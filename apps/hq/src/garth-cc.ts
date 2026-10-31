@@ -14,10 +14,12 @@ export interface ClaudeCodeOptions {
   cwd: string; // the Headquarters repo: G.A.R.T.H. can read and modify it
   systemPrompt: string;
   sessionId?: string;
+  model?: string;
   onSession(id: string | undefined): void;
   mcpBridge: string; // path to bin/mcp-bridge.mjs
   hqApi: string;
   hqToken: string;
+  channelId: string; // tool calls from this session are attributed to this channel
 }
 
 interface Turn {
@@ -79,7 +81,7 @@ export class ClaudeCodeBrain {
     const env = process.env;
     const mcp = {
       mcpServers: {
-        hq: { command: process.execPath, args: [this.opts.mcpBridge], env: { HQ_API: this.opts.hqApi, HQ_TOKEN: this.opts.hqToken } },
+        hq: { command: process.execPath, args: [this.opts.mcpBridge], env: { HQ_API: this.opts.hqApi, HQ_TOKEN: this.opts.hqToken, HQ_CHANNEL: this.opts.channelId } },
       },
     };
     const allowed = (env.GARTH_ALLOWED_TOOLS ?? "mcp__hq Bash Read Edit Write Glob Grep WebSearch WebFetch").split(/[\s,]+/).filter(Boolean);
@@ -94,7 +96,7 @@ export class ClaudeCodeBrain {
       "--strict-mcp-config",
       "--permission-mode", env.GARTH_PERMISSION_MODE ?? "acceptEdits",
       "--allowedTools", ...allowed,
-      ...(env.GARTH_CC_MODEL ? ["--model", env.GARTH_CC_MODEL] : []),
+      ...(this.opts.model ?? env.GARTH_CC_MODEL ? ["--model", (this.opts.model ?? env.GARTH_CC_MODEL)!] : []),
       ...(this.sessionId ? ["--resume", this.sessionId] : []),
     ];
     this.stderr = "";
@@ -155,7 +157,7 @@ export class ClaudeCodeBrain {
   }
 }
 
-function describe(name: string, input: Record<string, any>, cwd: string): string {
+export function describe(name: string, input: Record<string, any>, cwd: string): string {
   const rel = (p?: string) => (p ? path.relative(cwd, p) || p : "");
   if (name.startsWith("mcp__hq__")) {
     const tool = name.slice(9);

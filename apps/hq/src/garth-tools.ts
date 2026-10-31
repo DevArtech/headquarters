@@ -48,6 +48,35 @@ export const TOOLS: Tool[] = [
     input_schema: { type: "object", properties: { outpostId: str("Outpost id"), cmd: str("Command"), cwd: str("Working dir (optional)") }, required: ["outpostId", "cmd"] },
   },
   {
+    name: "list_channels",
+    description: "List the operator's channels (separate conversations with you): id, name, last activity, message count. Marks the one you are in.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "search_channels",
+    description:
+      "Search the full history of all channels (including this one) for messages matching a query, e.g. to recall what was discussed or decided elsewhere. Returns the best matches with their channel, time and nearby context.",
+    input_schema: {
+      type: "object",
+      properties: { query: str("Words to look for"), channelId: str("Limit to one channel (optional)"), limit: { type: "number", description: "Max matches (default 12)" } },
+      required: ["query"],
+    },
+  },
+  {
+    name: "read_channel",
+    description: "Read recent messages from a channel (yours or another), oldest first.",
+    input_schema: {
+      type: "object",
+      properties: { channelId: str("Channel id from list_channels or search_channels"), limit: { type: "number", description: "How many recent messages (default 30, max 200)" } },
+      required: ["channelId"],
+    },
+  },
+  {
+    name: "rename_channel",
+    description: "Rename the current channel (or another one) to a short name of two to four words.",
+    input_schema: { type: "object", properties: { name: str("New name"), channelId: str("Channel to rename (default: this one)") }, required: ["name"] },
+  },
+  {
     name: "list_voices",
     description: "List the voices you can speak with (accent, gender, quality grade, best first) and the one currently in use.",
     input_schema: { type: "object", properties: {} },
@@ -73,10 +102,14 @@ export const TOOLS: Tool[] = [
   },
 ];
 
-export type ToolRunner = (name: string, input: Record<string, unknown>) => Promise<unknown>;
+export type ToolContext = { channelId: string };
+export type ToolRunner = (name: string, input: Record<string, unknown>, ctx: ToolContext) => Promise<unknown>;
+
+const iso = (ts: number) => new Date(ts).toISOString().slice(0, 16).replace("T", " ");
+const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n) + "…" : t);
 
 export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): ToolRunner {
-  return async (name, input) => {
+  return async (name, input, ctx) => {
     const s = (k: string) => input[k] as string | undefined;
     switch (name) {
       case "fleet_status": {
@@ -91,6 +124,7 @@ export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): Tool
         const task = tasks.create({
           title: s("title")!, instruction: s("instruction")!, outpostId: s("outpostId")!,
           harness: s("harness") as Task["harness"], lane: (s("lane") as Task["lane"]) ?? "local", cwd: s("cwd"), createdBy: "garth",
+          channelId: ctx.channelId,
         });
         await tasks.dispatch(task);
         return { taskId: task.id, status: task.status, error: task.error };
@@ -113,6 +147,56 @@ export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): Tool
       }
       case "outpost_exec":
         return fleet.request(s("outpostId")!, "exec", { cmd: s("cmd")!, cwd: s("cwd"), timeoutMs: 120_000 }, 125_000);
+      case "list_channels":
+        return [...world.channels.values()]
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .map((c) => ({ id: c.id, name: c.name, lastActive: iso(c.updatedAt), messages: c.transcript.length, current: c.id === ctx.channelId || undefined }));
+      case "search_channels": {
+        const terms = String(input.query ?? "").toLowerCase().split(/\s+/).filter((t) => t.length > 1);
+        if (!terms.length) throw new Error("query is empty");
+        const phrase = String(input.query).toLowerCase().trim();
+        const limit = Math.min(50, Number(input.limit) || 12);
+        const hits: Array<{ score: number; ts: number; out: object }> = [];
+        for (const c of world.channels.values()) {
+          if (s("channelId") && c.id !== s("channelId")) continue;
+          c.transcript.forEach((m, i) => {
+            if (m.role === "system") return;
+            const text = m.text.toLowerCase();
+            const matched = terms.filter((t) => text.includes(t)).length;
+            if (!matched) return;
+            const score = matched / terms.length + (text.includes(phrase) ? 1 : 0);
+            const before = c.transcript[i - 1];
+            hits.push({
+              score,
+              ts: m.ts,
+              out: {
+                channelId: c.id, channel: c.name, current: c.id === ctx.channelId || undefined, at: iso(m.ts), role: m.role === "garth" ? "you" : "operator",
+                text: clip(m.text, 600),
+                ...(before && before.role !== "system" ? { previous: `${before.role === "garth" ? "you" : "operator"}: ${clip(before.text, 200)}` } : {}),
+              },
+            });
+          });
+        }
+        hits.sort((a, b) => b.score - a.score || b.ts - a.ts);
+        return hits.length ? hits.slice(0, limit).map((h) => h.out) : "no matches";
+      }
+      case "read_channel": {
+        const c = world.channels.get(s("channelId") ?? "");
+        if (!c) throw new Error("no such channel; use list_channels");
+        const n = Math.min(200, Number(input.limit) || 30);
+        return {
+          channel: c.name,
+          messages: c.transcript.slice(-n).map((m) => ({ at: iso(m.ts), role: m.role === "garth" ? "you" : m.role === "user" ? "operator" : "system", text: clip(m.text, 1500) })),
+        };
+      }
+      case "rename_channel": {
+        const c = world.channel(s("channelId") ?? ctx.channelId);
+        const name = String(input.name ?? "").trim().slice(0, 40);
+        if (!name) throw new Error("name is empty");
+        c.name = name;
+        world.changed();
+        return `renamed to "${name}"`;
+      }
       case "list_voices":
         return { current: voiceStatus(), voices: await listVoices() };
       case "set_voice": {
@@ -122,10 +206,10 @@ export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks): Tool
         return { ...now, note: "applies from your next sentence" };
       }
       case "notify_user":
-        world.notify({ level: (s("level") as "info") ?? "info", title: s("title")!, body: s("body"), taskId: s("taskId") });
+        world.notify({ level: (s("level") as "info") ?? "info", title: s("title")!, body: s("body"), taskId: s("taskId"), channelId: ctx.channelId });
         return "posted";
       case "request_decision":
-        world.notify({ level: "warn", title: s("question")!, taskId: s("taskId"), decision: { question: s("question")!, options: input.options as string[] } });
+        world.notify({ level: "warn", title: s("question")!, taskId: s("taskId"), channelId: ctx.channelId, decision: { question: s("question")!, options: input.options as string[] } });
         return "asked; end your turn and wait for the operator's answer";
       default:
         throw new Error(`unknown tool ${name}`);

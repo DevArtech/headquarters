@@ -179,6 +179,26 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .bar input:focus ~ kbd { display: none; }
 .sigil, .badge { flex: none; width: 32px; height: 32px; display: grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--cyan); font-size: 14px; }
 .sigil:hover { text-shadow: 0 0 10px var(--cyan); }
+.chan-chip {
+  flex: none; max-width: 180px; height: 26px; padding: 0 10px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer;
+  background: rgba(79, 209, 255, 0.08); border: 1px solid var(--line); color: var(--cyan); font: 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
+}
+.chan-chip:hover { border-color: var(--line-strong); }
+.new-channel {
+  align-self: flex-start; padding: 6px 12px; cursor: pointer; background: rgba(79, 209, 255, 0.1); border: 1px solid rgba(79, 209, 255, 0.4);
+  color: var(--cyan); font: 600 10px var(--mono); letter-spacing: 0.16em; text-transform: uppercase;
+}
+.new-channel:hover { background: rgba(79, 209, 255, 0.2); }
+.chan { cursor: pointer; padding: 8px 10px; border-left: 2px solid transparent; background: rgba(255, 255, 255, 0.02); }
+.chan:hover { background: rgba(79, 209, 255, 0.06); }
+.chan.on { border-left-color: var(--cyan); background: rgba(79, 209, 255, 0.08); }
+.chan-head { display: flex; align-items: center; gap: 8px; }
+.chan-name { font: 600 12px var(--mono); letter-spacing: 0.08em; color: var(--text); overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.chan-head .time { margin-left: auto; font: 9px var(--mono); color: var(--muted); }
+.chan-del { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; opacity: 0; }
+.chan:hover .chan-del { opacity: 1; }
+.chan-del:hover { color: var(--red); }
+.chan-last { margin-top: 3px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .voice { flex: none; width: 30px; height: 30px; display: grid; place-items: center; background: none; border: 0; cursor: pointer; color: var(--muted); }
 .voice.on { color: var(--cyan); }
 .voice:hover { filter: drop-shadow(0 0 6px currentColor); }

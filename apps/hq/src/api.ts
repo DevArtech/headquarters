@@ -24,10 +24,23 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
   app.get("/api/state", (c) => c.json(world.snapshot()));
 
   app.post("/api/garth", async (c) => {
-    const { text } = await c.req.json<{ text: string }>();
-    garth.handleUser(text);
+    const { text, channelId } = await c.req.json<{ text: string; channelId?: string }>();
+    garth.handleUser(channelId, text);
     return c.json({ ok: true });
   });
+
+  // channels: separate G.A.R.T.H. conversations
+  app.post("/api/channels", async (c) => {
+    const { name } = await c.req.json<{ name?: string }>().catch(() => ({ name: undefined }));
+    const ch = world.createChannel(name?.trim() || undefined);
+    return c.json({ id: ch.id, name: ch.name });
+  });
+  app.delete("/api/channels/:id", (c) =>
+    json(c, () => {
+      world.deleteChannel(c.req.param("id"));
+      garth.forget(c.req.param("id"));
+    }),
+  );
 
   // G.A.R.T.H.'s tools, called by the MCP bridge that Claude Code spawns. Bearer-token protected.
   const authed = (h?: string) => h?.replace(/^Bearer /, "") === token;
@@ -36,7 +49,7 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
     if (!authed(c.req.header("authorization"))) return c.json({ error: "unauthorized" }, 401 as 400);
     const input = await c.req.json().catch(() => ({}));
     return garth
-      .callTool(c.req.param("name"), input)
+      .callTool(c.req.param("name"), input, c.req.header("x-hq-channel") || undefined)
       .then((result) => c.json({ result: result ?? "ok" }))
       .catch((e) => c.json({ error: (e as Error).message }, 400));
   });
@@ -88,7 +101,7 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
       n.decision.answer = answer;
       n.read = true;
       world.changed();
-      garth.handleDecision(n.decision.question, answer, n.taskId);
+      garth.handleDecision(n.channelId, n.decision.question, answer, n.taskId);
     });
   });
 

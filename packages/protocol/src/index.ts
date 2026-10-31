@@ -70,6 +70,7 @@ export const Task = z.object({
   createdAt: z.number(),
   updatedAt: z.number(),
   agentId: z.string().optional(),
+  channelId: z.string().optional(), // G.A.R.T.H. channel that dispatched it; results are reported there
   result: z.string().optional(),
   error: z.string().optional(),
   events: z.array(TaskEvent),
@@ -83,6 +84,7 @@ export const Notification = z.object({
   title: z.string(),
   body: z.string().optional(),
   taskId: z.string().optional(),
+  channelId: z.string().optional(), // channel a decision's answer is routed back to
   decision: z
     .object({ question: z.string(), options: z.array(z.string()), answer: z.string().optional() })
     .optional(),
@@ -101,6 +103,15 @@ export type GarthMessage = z.infer<typeof GarthMessage>;
 export const GarthState = z.enum(["idle", "thinking", "speaking", "alert"]);
 export type GarthState = z.infer<typeof GarthState>;
 
+/** A G.A.R.T.H. channel: its own conversation (and Claude Code session). */
+export interface ChannelView {
+  id: string;
+  name: string;
+  state: GarthState;
+  updatedAt: number;
+  transcript: GarthMessage[]; // most recent messages
+}
+
 /** Full world snapshot pushed to the UI on every change. */
 export interface Snapshot {
   hq: { id: string; name: string; startedAt: number };
@@ -108,7 +119,7 @@ export interface Snapshot {
   agents: Agent[];
   tasks: Task[];
   notifications: Notification[];
-  garth: { state: GarthState; transcript: GarthMessage[] };
+  garth: { state: GarthState; channels: ChannelView[] }; // channels: most recently active first
 }
 
 // ───────────────────── Outpost ⇄ HQ wire protocol ─────────────────────
@@ -173,8 +184,8 @@ export type HqToOutpost = z.infer<typeof HqToOutpost>;
 
 export type HqToUi =
   | { type: "snapshot"; state: Snapshot }
-  | { type: "garth.delta"; text: string }
-  | { type: "garth.activity"; text: string }
+  | { type: "garth.delta"; channelId: string; text: string }
+  | { type: "garth.activity"; channelId: string; text: string }
   | { type: "task.event"; taskId: string; event: TaskEvent };
 
 // ───────────────────── helpers ─────────────────────

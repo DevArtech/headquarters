@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { HqToUi, Snapshot } from "@hq/protocol";
+import type { ChannelView, HqToUi, Snapshot } from "@hq/protocol";
 import { tts } from "./tts";
 
 export type Selection = { kind: "hq" } | { kind: "outpost"; id: string } | { kind: "task"; id: string } | { kind: "agent"; id: string } | null;
@@ -11,9 +11,25 @@ interface UiState {
   activity: string; // what G.A.R.T.H. is doing right now (tool call), if anything
   voiceSpeaking: boolean;
   voiceOn: boolean;
+  activeChannelId: string | null; // the channel the operator is looking at (remembered per browser)
   selected: Selection;
   select(s: Selection): void;
   setVoice(on: boolean): void;
+  setChannel(id: string): void;
+}
+
+const savedChannel = () => {
+  try {
+    return localStorage.getItem("garth.channel");
+  } catch {
+    return null;
+  }
+};
+
+/** The active channel: the chosen one if it still exists, else General, else the most recent. */
+export function activeChannelOf(s: { state: Snapshot | null; activeChannelId: string | null }): ChannelView | undefined {
+  const chs = s.state?.garth.channels ?? [];
+  return chs.find((c) => c.id === s.activeChannelId) ?? chs.find((c) => c.id === "general") ?? chs[0];
 }
 
 export const useStore = create<UiState>((set) => ({
@@ -23,8 +39,18 @@ export const useStore = create<UiState>((set) => ({
   activity: "",
   voiceSpeaking: false,
   voiceOn: tts.enabled,
+  activeChannelId: savedChannel(),
   selected: null,
   select: (selected) => set({ selected }),
+  setChannel: (id) => {
+    try {
+      localStorage.setItem("garth.channel", id);
+    } catch {
+      /* private mode */
+    }
+    tts.stop();
+    set({ activeChannelId: id, streaming: "", activity: "" });
+  },
   setVoice: (on) => {
     tts.setEnabled(on);
     set({ voiceOn: on });
@@ -45,19 +71,22 @@ export function connect() {
     const msg = JSON.parse(ev.data) as HqToUi;
     if (msg.type === "snapshot") {
       useStore.setState((s) => {
-        const prev = s.state?.garth.transcript;
-        const next = msg.state.garth.transcript;
-        // a completed G.A.R.T.H. message landed in the transcript: the stream it came from is done
-        const committed = !!prev && next.length && prev[prev.length - 1]?.id !== next[next.length - 1]?.id && next[next.length - 1].role === "garth";
-        if (committed) tts.flush();
-        const idle = msg.state.garth.state === "idle" || msg.state.garth.state === "alert";
-        if (idle) tts.flush();
+        const prev = activeChannelOf(s);
+        const next = activeChannelOf({ state: msg.state, activeChannelId: s.activeChannelId });
+        const pt = prev?.transcript ?? [];
+        const nt = next?.transcript ?? [];
+        // a completed G.A.R.T.H. message landed in the active channel: the stream it came from is done
+        const committed = prev?.id === next?.id && nt.length > 0 && pt.at(-1)?.id !== nt.at(-1)?.id && nt.at(-1)!.role === "garth";
+        const idle = next?.state === "idle";
+        if (committed || idle) tts.flush();
         return { state: msg.state, streaming: committed || idle ? "" : s.streaming };
       });
     } else if (msg.type === "garth.delta") {
+      if (msg.channelId !== activeChannelOf(useStore.getState())?.id) return; // other channels speak only in their own view
       tts.feed(msg.text);
       useStore.setState((s) => ({ streaming: s.streaming + msg.text, activity: "" }));
     } else if (msg.type === "garth.activity") {
+      if (msg.channelId !== activeChannelOf(useStore.getState())?.id) return;
       useStore.setState({ activity: msg.text });
     }
   };

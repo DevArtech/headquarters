@@ -13,6 +13,7 @@ export interface NewTask {
   lane?: Lane;
   cwd?: string;
   createdBy: "user" | "garth";
+  channelId?: string;
 }
 
 /** Task lifecycle: create → dispatch to an Outpost → ingest agent events → finish → notify. */
@@ -33,6 +34,7 @@ export class Tasks {
       cwd: input.cwd,
       status: "queued",
       createdBy: input.createdBy,
+      channelId: input.channelId,
       createdAt: now,
       updatedAt: now,
       events: [],
