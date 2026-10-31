@@ -42,10 +42,52 @@ let chain: Promise<void> = Promise.resolve(); // keeps clips in sentence order
 const sources = new Set<AudioBufferSourceNode>();
 const inflight = new Set<AbortController>();
 
+let analyser: AnalyserNode | null = null;
 function audio() {
-  ctx ??= new AudioContext();
+  if (!ctx) {
+    ctx = new AudioContext();
+    // everything G.A.R.T.H. says passes through an analyser so the core can react to the voice
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.55;
+    analyser.connect(ctx.destination);
+  }
   if (ctx.state === "suspended") ctx.resume().catch(() => {});
   return ctx;
+}
+
+const spectrum = new Uint8Array(128);
+const voiceLevel = { level: 0, bands: new Float32Array(48) };
+/**
+ * The voice right now, for visuals: overall level 0–1 and 48 frequency bands 0–1 (speech range,
+ * log-spaced). Neural voice: measured from the audio. Browser voice (no audio access): a synthetic
+ * speech rhythm while it talks. Silence otherwise.
+ */
+export function readVoice(t: number) {
+  const { bands } = voiceLevel;
+  if (analyser && sources.size) {
+    analyser.getByteFrequencyData(spectrum);
+    let sum = 0;
+    for (let i = 0; i < bands.length; i++) {
+      // log-spaced bins over ~90 Hz – 9 kHz (bin width ≈ 94 Hz at 24 kHz / 256)
+      const lo = Math.floor(Math.pow(96, i / bands.length));
+      const hi = Math.max(lo + 1, Math.floor(Math.pow(96, (i + 1) / bands.length)));
+      let m = 0;
+      for (let b = lo; b < hi && b < spectrum.length; b++) m = Math.max(m, spectrum[b]);
+      bands[i] = m / 255;
+      sum += bands[i];
+    }
+    voiceLevel.level = Math.min(1, (sum / bands.length) * 2.2);
+  } else if (active > 0) {
+    // browser speech: no audio to analyse; a plausible syllable rhythm instead
+    const env = Math.max(0, Math.sin(t * 9.3) * Math.sin(t * 3.1 + 1.3) * 0.8 + 0.25);
+    voiceLevel.level = env;
+    for (let i = 0; i < bands.length; i++) bands[i] = env * (0.35 + 0.65 * Math.abs(Math.sin(i * 0.7 + t * 11))) * (1 - i / bands.length / 1.4);
+  } else {
+    voiceLevel.level = 0;
+    bands.fill(0);
+  }
+  return voiceLevel;
 }
 // browsers only allow audio after a user gesture: unlock on the first one
 if (typeof window !== "undefined") {
@@ -85,7 +127,7 @@ function speakHq(text: string) {
     const c = audio();
     const src = c.createBufferSource();
     src.buffer = buf;
-    src.connect(c.destination);
+    src.connect(analyser ?? c.destination);
     playhead = Math.max(playhead, c.currentTime + 0.02);
     src.start(playhead);
     playhead += buf.duration;

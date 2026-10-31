@@ -327,7 +327,7 @@ button, input, textarea, select { font: inherit; color: inherit; }
 /* ───────── diagnostic switches (?off=… / ?diag) ───────── */
 .off-opaque .sheet, .off-opaque .bar { background: #060c16 !important; backdrop-filter: none !important; }
 .off-clip .sheet, .off-clip .bar, .off-clip .decision, .off-clip .drawer, .off-clip .node { clip-path: none !important; }
-.off-orb canvas.orb { visibility: hidden !important; }
+.off-orb canvas.orb, .off-orb .orb canvas { visibility: hidden !important; }
 .off-edges .pulse { display: none !important; }
 .off-edges .conduit-core, .off-edges .led, .off-edges .scan::before { animation: none !important; }
 .off-graph .graph { visibility: hidden !important; }
