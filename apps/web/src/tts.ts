@@ -9,20 +9,13 @@
 type Listener = (speaking: boolean) => void;
 
 const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
-let enabled = read();
+let enabled = true; // set from the voiceOn setting when the page loads; the mute button lasts until reload
 let buffer = "";
 let active = 0;
 let engine: "hq" | "browser" = "browser";
 let generation = 0; // bumped by stop(): late audio from an older generation is dropped
 const listeners = new Set<Listener>();
 
-function read() {
-  try {
-    return localStorage.getItem("garth.voice") !== "off";
-  } catch {
-    return true;
-  }
-}
 function emit() {
   for (const l of listeners) l(active > 0);
 }
@@ -181,11 +174,6 @@ export const tts = {
   },
   setEnabled(on: boolean) {
     enabled = on;
-    try {
-      localStorage.setItem("garth.voice", on ? "on" : "off");
-    } catch {
-      /* private mode */
-    }
     if (!on) this.stop();
   },
   available: !!synth || typeof AudioContext !== "undefined",

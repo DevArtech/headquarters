@@ -5,7 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GarthBrainKind, HqToUi } from "@hq/protocol";
-import { synthesize, voiceStatus } from "./voice.js";
+import { listVoices, synthesize, voiceStatus } from "./voice.js";
+import { updateSettings, type SettingsPatch } from "./settings.js";
 import type { Fleet } from "./fleet.js";
 import type { Garth } from "./garth.js";
 import type { Tasks } from "./tasks.js";
@@ -28,6 +29,14 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
     garth.handleUser(channelId, text);
     return c.json({ ok: true });
   });
+
+  // operator settings: defaults for new channels and page loads (also changeable by asking G.A.R.T.H.)
+  app.get("/api/settings", (c) => c.json({ settings: world.settings, brains: world.brains }));
+  app.post("/api/settings", async (c) => {
+    const patch = await c.req.json<SettingsPatch>();
+    return json(c, () => updateSettings(world, patch));
+  });
+  app.get("/api/voices", (c) => json(c, () => listVoices()));
 
   // channels: separate G.A.R.T.H. conversations
   app.post("/api/channels", async (c) => {

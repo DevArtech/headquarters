@@ -3,7 +3,8 @@ import type { GarthBrainKind, Task } from "@hq/protocol";
 import type { Fleet } from "./fleet.js";
 import type { Tasks } from "./tasks.js";
 import type { World } from "./world.js";
-import { listVoices, setVoice, voiceStatus } from "./voice.js";
+import { listVoices, voiceStatus } from "./voice.js";
+import { updateSettings, type SettingsPatch } from "./settings.js";
 
 type Tool = Anthropic.Beta.BetaTool;
 const str = (description: string) => ({ type: "string" as const, description });
@@ -79,7 +80,7 @@ export const TOOLS: Tool[] = [
   {
     name: "set_brain",
     description:
-      "Switch the agent harness you think with in this channel, when the operator asks (e.g. \"use Codex\", \"switch back to Claude\", \"try a different model\"). Brains: claude-code (Claude Code), codex (OpenAI Codex), api (Claude API, no repo access). Your reply now still comes from the current harness; the new one takes over from the operator's next message with a recap of this conversation, and is remembered for this channel and as the default for new ones. Say briefly that you've switched.",
+      "Switch the agent harness you think with in this channel, when the operator asks (e.g. \"use Codex\", \"switch back to Claude\", \"try a different model\"). Brains: claude-code (Claude Code), codex (OpenAI Codex), api (Claude API, no repo access). Your reply now still comes from the current harness; the new one takes over from the operator's next message with a recap of this conversation, and is remembered for this channel only (the brain new channels start on is a setting: update_settings). Say briefly that you've switched.",
     input_schema: {
       type: "object",
       properties: {
@@ -90,6 +91,27 @@ export const TOOLS: Tool[] = [
     },
   },
   {
+    name: "get_settings",
+    description: "Read the operator's settings: the defaults for new channels and page loads (brain and model for new channels, which channel opens on load, voice, speed, voice on or muted at load), plus which brains are installed.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "update_settings",
+    description:
+      "Change the operator's settings when they ask to change a default (\"new channels should use Codex\", \"open General when I load the page\", \"start muted\"). These are defaults: the brain applies to channels created afterwards (use set_brain for this channel), the startup channel and voiceOn apply on the next page load, the voice applies from your next sentence. Pass only what changes; null resets a field to its default.",
+    input_schema: {
+      type: "object",
+      properties: {
+        brain: { type: ["string", "null"], enum: ["claude-code", "codex", "api", null], description: "Brain for new channels" },
+        model: { type: ["string", "null"], description: "Model for that brain (null = its default)" },
+        startupChannel: str('Channel opened on page load: "last" (last used), "general", "new" (a fresh channel), or a channel id'),
+        voice: { type: ["string", "null"], description: "Voice id, e.g. bm_george (see list_voices)" },
+        voiceSpeed: { type: ["number", "null"], description: "Speaking rate 0.5 to 2" },
+        voiceOn: { type: "boolean", description: "Whether speech is on when the page loads" },
+      },
+    },
+  },
+  {
     name: "list_voices",
     description: "List the voices you can speak with (accent, gender, quality grade, best first) and the one currently in use.",
     input_schema: { type: "object", properties: {} },
@@ -97,7 +119,7 @@ export const TOOLS: Tool[] = [
   {
     name: "set_voice",
     description:
-      "Change your speaking voice and/or speed, live, when the operator asks. Takes effect from your next sentence and is remembered across restarts. Voice ids look like am_michael (American male), bm_george (British male), af_heart (American female), bf_emma (British female); use list_voices if unsure.",
+      "Change your speaking voice and/or speed, live, when the operator asks. Takes effect from your next sentence and is saved as the voice setting. Voice ids look like am_michael (American male), bm_george (British male), af_heart (American female), bf_emma (British female); use list_voices if unsure.",
     input_schema: {
       type: "object",
       properties: { voice: str("Voice id, e.g. bm_george"), speed: { type: "number", description: "Speaking rate, 0.5 to 2 (1 is normal; currently ~1.05)" } },
@@ -221,10 +243,18 @@ export function createToolRunner(world: World, fleet: Fleet, tasks: Tasks, brain
       case "list_voices":
         return { current: voiceStatus(), voices: await listVoices() };
       case "set_voice": {
-        const now = await setVoice({ voice: s("voice") || undefined, speed: input.speed === undefined ? undefined : Number(input.speed) });
-        world.voice = now;
-        world.changed();
-        return { ...now, note: "applies from your next sentence" };
+        const next = await updateSettings(world, {
+          ...(s("voice") ? { voice: s("voice") } : {}),
+          ...(input.speed !== undefined ? { voiceSpeed: Number(input.speed) } : {}),
+        });
+        return { voice: voiceStatus().voice, speed: next.voiceSpeed, note: "applies from your next sentence" };
+      }
+      case "get_settings":
+        return { settings: world.settings, installedBrains: world.brains, channels: [...world.channels.values()].map((c) => ({ id: c.id, name: c.name })) };
+      case "update_settings": {
+        const patch: SettingsPatch = {};
+        for (const k of ["brain", "model", "startupChannel", "voice", "voiceSpeed", "voiceOn"] as const) if (k in input) (patch as Record<string, unknown>)[k] = input[k];
+        return { settings: await updateSettings(world, patch) };
       }
       case "notify_user":
         world.notify({ level: (s("level") as "info") ?? "info", title: s("title")!, body: s("body"), taskId: s("taskId"), channelId: ctx.channelId });

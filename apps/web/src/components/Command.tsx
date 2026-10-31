@@ -14,7 +14,6 @@ export function Command() {
   const channel = useStore(activeChannelOf);
   const setChannel = useStore((s) => s.setChannel);
   const channels = state?.garth.channels ?? [];
-  const brains = state?.garth.brains ?? [];
   const [text, setText] = useState("");
   const [panel, setPanel] = useState<null | "history" | "inbox" | "channels">(null);
   const input = useRef<HTMLInputElement>(null);
@@ -141,19 +140,6 @@ export function Command() {
         <button className="chan-chip" onClick={() => setPanel((p) => (p === "channels" ? null : "channels"))} title="Channels">
           # {channel?.name ?? "General"}
         </button>
-        {channel && (
-          <select
-            className="brain-chip"
-            value={channel.brain}
-            disabled={brains.length < 2}
-            title={`G.A.R.T.H. in this channel runs on ${BRAIN[channel.brain]}${channel.model ? ` (${channel.model})` : ""}`}
-            onChange={(e) => post(`/api/channels/${channel.id}/brain`, { kind: e.target.value }).catch((err) => alert(err.message))}
-          >
-            {brains.map((b) => (
-              <option key={b} value={b}>{BRAIN[b]}</option>
-            ))}
-          </select>
-        )}
         <input
           id="garth-input"
           ref={input}

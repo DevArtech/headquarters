@@ -59,6 +59,27 @@ export const useStore = create<UiState>((set) => ({
 
 tts.onSpeaking((voiceSpeaking) => useStore.setState({ voiceSpeaking }));
 
+/** Settings are defaults for a page load: apply the startup channel and voice once, on the first snapshot. */
+let startupApplied = false;
+function applyStartup(snap: Snapshot) {
+  if (startupApplied) return;
+  startupApplied = true;
+  const { settings, garth } = snap;
+  useStore.getState().setVoice(settings.voiceOn);
+  const go = useStore.getState().setChannel;
+  const pick = settings.startupChannel;
+  if (pick === "last") return; // keep the channel remembered by this browser
+  if (pick === "general") return go("general");
+  if (pick === "new") {
+    // reuse an untouched new channel rather than piling up empty ones
+    const empty = garth.channels.find((c) => c.name === "New channel" && c.transcript.length === 0);
+    if (empty) return go(empty.id);
+    post("/api/channels", {}).then((c: { id: string }) => go(c.id)).catch(() => {});
+    return;
+  }
+  if (garth.channels.some((c) => c.id === pick)) go(pick);
+}
+
 export function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/ws/ui`);
@@ -70,6 +91,7 @@ export function connect() {
   ws.onmessage = (ev) => {
     const msg = JSON.parse(ev.data) as HqToUi;
     if (msg.type === "snapshot") {
+      applyStartup(msg.state);
       useStore.setState((s) => {
         const prev = activeChannelOf(s);
         const next = activeChannelOf({ state: msg.state, activeChannelId: s.activeChannelId });

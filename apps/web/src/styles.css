@@ -184,6 +184,30 @@ button, input, textarea, select { font: inherit; color: inherit; }
   background: rgba(79, 209, 255, 0.08); border: 1px solid var(--line); color: var(--cyan); font: 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase;
 }
 .chan-chip:hover { border-color: var(--line-strong); }
+.gear {
+  position: absolute; top: 10px; right: 14px; z-index: 26; width: 34px; height: 34px; display: grid; place-items: center;
+  background: none; border: 1px solid transparent; color: var(--muted); cursor: pointer; transition: color 0.2s, transform 0.4s;
+}
+.gear:hover { color: var(--cyan); transform: rotate(45deg); }
+.gear.on { color: var(--cyan); border-color: var(--line); }
+.settings { padding: 18px 18px 24px; display: flex; flex-direction: column; gap: 14px; font-size: 12px; }
+.settings .h { font: 600 17px var(--display); padding-right: 28px; }
+.settings .hint { margin: -6px 0 0; color: var(--muted); line-height: 1.5; }
+.settings section { display: flex; flex-direction: column; gap: 9px; padding-top: 12px; border-top: 1px solid var(--line); }
+.settings .sec { font: 600 10px var(--mono); letter-spacing: 0.22em; text-transform: uppercase; color: var(--cyan); }
+.settings label { display: flex; flex-direction: column; gap: 5px; }
+.settings label > span { font: 10px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.settings label.row { flex-direction: row; align-items: center; justify-content: space-between; }
+.settings select, .settings input:not([type="checkbox"]):not([type="range"]) {
+  padding: 8px 10px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--line); outline: none; color: var(--text); font: 12px var(--display);
+}
+.settings select:focus, .settings input:focus { border-color: var(--line-strong); }
+.settings select option { background: #060c16; }
+.settings input[type="range"] { accent-color: var(--cyan); }
+.settings input[type="checkbox"] { accent-color: var(--cyan); width: 16px; height: 16px; }
+.settings .note { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.settings .btn { align-self: flex-start; }
+.settings .err { margin: 0; color: var(--red); font: 11px var(--mono); }
 .brain-chip {
   flex: none; height: 26px; padding: 0 6px; cursor: pointer; appearance: none; -webkit-appearance: none; outline: none;
   background: none; border: 1px solid var(--line); color: var(--muted); font: 10px var(--mono); letter-spacing: 0.12em; text-transform: uppercase;

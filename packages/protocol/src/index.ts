@@ -107,6 +107,19 @@ export type GarthState = z.infer<typeof GarthState>;
 export const GarthBrainKind = z.enum(["claude-code", "codex", "api"]);
 export type GarthBrainKind = z.infer<typeof GarthBrainKind>;
 
+/**
+ * Operator settings: the defaults applied to new channels and when the UI is loaded.
+ * Changed from the settings panel or by asking G.A.R.T.H.
+ */
+export interface Settings {
+  brain?: GarthBrainKind; // brain for new channels (unset = the preferred installed one)
+  model?: string; // model for that brain (unset = its default)
+  startupChannel: string; // channel opened on page load: "last" | "general" | "new" | a channel id
+  voice?: string; // Kokoro voice id (unset = GARTH_VOICE)
+  voiceSpeed?: number; // 0.5–2 (unset = GARTH_VOICE_SPEED)
+  voiceOn: boolean; // whether speech starts on when the page loads
+}
+
 /** A G.A.R.T.H. channel: its own conversation (and harness session). */
 export interface ChannelView {
   id: string;
@@ -125,7 +138,8 @@ export interface Snapshot {
   agents: Agent[];
   tasks: Task[];
   notifications: Notification[];
-  garth: { state: GarthState; channels: ChannelView[]; brains: GarthBrainKind[] }; // channels: most recently active first; brains: available here
+  garth: { state: GarthState; channels: ChannelView[]; brains: GarthBrainKind[] };
+  settings: Settings; // channels: most recently active first; brains: available here
 }
 
 // ───────────────────── Outpost ⇄ HQ wire protocol ─────────────────────

@@ -152,7 +152,7 @@ export class Garth {
 
   /**
    * Move a channel to another brain (and/or model). Takes effect once the channel's current turn is
-   * done; the new brain gets a recap of the conversation. Also becomes the default for new channels.
+   * done; the new brain gets a recap of the conversation. The default for new channels is unchanged.
    */
   async setBrain(channelId: string | undefined, kind: GarthBrainKind, model?: string): Promise<BrainChoice> {
     await this.ready;
@@ -161,10 +161,8 @@ export class Garth {
     const c = this.world.channel(channelId);
     const choice: BrainChoice = model?.trim() ? { kind, model: model.trim() } : { kind };
     const was = this.world.brainOf(c);
-    // channels still on the default keep the brain they have; only new channels follow the new default
-    for (const other of this.world.channels.values()) other.brain ??= this.world.brainOf(other);
+    // per-channel only: the default for new channels is a setting (settings.ts)
     c.brain = choice;
-    this.world.brainDefault = choice;
     this.world.changed();
     if (was.kind === choice.kind && was.model === choice.model) return choice;
     this.chain(c.id, async () => {
