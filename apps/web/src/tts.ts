@@ -6,6 +6,8 @@
  * previous one plays, and scheduled gaplessly with Web Audio. If HQ's voice is unavailable, the
  * browser's built-in speech synthesis is used instead.
  */
+import { speakName } from "@hq/protocol";
+
 type Listener = (speaking: boolean) => void;
 
 const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
@@ -24,7 +26,7 @@ const ended = () => ((active = Math.max(0, active - 1)), emit());
 
 /** Strip what reads badly aloud: markdown, code, URLs. */
 function speakable(s: string) {
-  return s
+  return speakName(s)
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`([^`]*)`/g, "$1")
     .replace(/https?:\/\/\S+/g, "a link")
@@ -133,10 +135,13 @@ export const tts = {
   /** Feed streamed text; complete sentences are spoken immediately. */
   feed(text: string) {
     if (!enabled) return;
-    buffer += text;
+    // rewrite the name before splitting, so "G.A.R.T.H. is…" isn't cut at its dots
+    buffer = speakName(buffer + text);
     for (;;) {
       const m = buffer.match(/^[\s\S]*?(?:[.!?…:;](?=\s)|\n)/);
       if (!m || m[0].trim().length < 2) break;
+      // "GARTH." may end the sentence or just the abbreviation: wait for the next character to tell
+      if (/GARTH\.$/.test(m[0]) && !/\S/.test(buffer.slice(m[0].length))) break;
       speak(m[0]);
       buffer = buffer.slice(m[0].length);
     }

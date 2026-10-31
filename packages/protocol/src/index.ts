@@ -210,5 +210,16 @@ export type HqToUi =
 
 // ───────────────────── helpers ─────────────────────
 
+/**
+ * For speech only: "G.A.R.T.H." and dotted variants ("G. A. R. T. H.", "g.a.r.t.h") become "GARTH", which
+ * the voice says as a word instead of spelling out letters. A full stop that ended the sentence is kept;
+ * one that was only part of the abbreviation ("G.A.R.T.H. is ready", "G.A.R.T.H.'s") is dropped.
+ */
+export function speakName(text: string): string {
+  return text
+    .replace(/\bG\s*\.\s*A\s*\.\s*R\s*\.\s*T\s*\.\s*H\b/gi, "GARTH")
+    .replace(/GARTH\.(?=\s+[a-z]|['’,;:)])/g, "GARTH");
+}
+
 export const newId = (prefix = "") =>
   prefix + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);

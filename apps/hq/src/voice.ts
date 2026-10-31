@@ -1,4 +1,5 @@
 import { KokoroTTS } from "kokoro-js";
+import { speakName } from "@hq/protocol";
 
 /**
  * G.A.R.T.H.'s voice: Kokoro-82M, an open-weight neural TTS model, running locally on the HQ machine
@@ -52,7 +53,7 @@ export function voiceStatus() {
 /** Synthesise one sentence to a WAV file. */
 export async function synthesize(text: string, voice = voiceConfig.voice): Promise<ArrayBuffer> {
   const tts = await loadVoice();
-  const job = queue.then(() => tts.generate(text, { voice: voice as never, speed: voiceConfig.speed }));
+  const job = queue.then(() => tts.generate(speakName(text), { voice: voice as never, speed: voiceConfig.speed }));
   queue = job.catch(() => {});
   return (await job).toWav();
 }
