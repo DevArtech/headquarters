@@ -264,3 +264,13 @@ button, input, textarea, select { font: inherit; color: inherit; }
   .bar, .sheet, .drawer { backdrop-filter: none; background: rgba(6, 12, 22, 0.93); }
   .decision { backdrop-filter: none; background: linear-gradient(180deg, rgba(40, 32, 20, 0.96), rgba(6, 12, 22, 0.96)); }
 }
+
+/* ───────── diagnostic switches (?off=… / ?diag) ───────── */
+.off-opaque .sheet, .off-opaque .bar { background: #060c16 !important; backdrop-filter: none !important; }
+.off-clip .sheet, .off-clip .bar, .off-clip .decision, .off-clip .drawer, .off-clip .node { clip-path: none !important; }
+.off-orb canvas.orb { visibility: hidden !important; }
+.off-edges .pulse { display: none !important; }
+.off-edges .conduit-core, .off-edges .led, .off-edges .scan::before { animation: none !important; }
+.off-graph .graph { visibility: hidden !important; }
+.off-grain .grain { display: none !important; }
+.off-font .sheet, .off-font .sheet * { font-family: system-ui, sans-serif !important; }

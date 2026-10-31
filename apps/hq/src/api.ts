@@ -40,6 +40,13 @@ export function startApi({ world, fleet, tasks, garth, port, token, webDist }: A
       .catch((e) => c.json({ error: (e as Error).message }, 400));
   });
 
+  // performance reports from the UI's ?diag run, appended to data/diag.jsonl
+  app.post("/api/diag", async (c) => {
+    const report = await c.req.json().catch(() => null);
+    if (report) fs.appendFileSync(path.join(path.dirname(webDist), "../../data/diag.jsonl"), JSON.stringify(report) + "\n");
+    return c.json({ ok: true });
+  });
+
   app.post("/api/tasks", async (c) => {
     const body = await c.req.json();
     return json(c, async () => {
