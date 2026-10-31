@@ -71,9 +71,9 @@ export class World extends EventEmitter {
     super();
     this.file = path.join(dataDir, "hq.json");
     fs.mkdirSync(dataDir, { recursive: true });
-    if (fs.existsSync(this.file)) {
+    const p = readState(this.file);
+    if (p) {
       try {
-        const p = JSON.parse(fs.readFileSync(this.file, "utf8")) as Persisted;
         for (const t of p.tasks ?? []) {
           // anything that was running when HQ died is unknown now
           if (t.status === "running" || t.status === "queued") t.status = "failed", (t.error = "HQ restarted");
@@ -203,6 +203,37 @@ export class World extends EventEmitter {
       lastTurnChannel: this.lastTurnChannel,
       settings: this.settings,
     };
-    fs.writeFile(this.file, JSON.stringify(p), (err) => err && console.error("[world] save failed:", err));
+    // atomic: write a temp file and rename it over the old one, so a restart mid-save can never leave a
+    // half-written hq.json; the previous good copy is kept as hq.json.bak
+    const tmp = this.file + ".tmp";
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(p));
+      if (fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + ".bak");
+      fs.renameSync(tmp, this.file);
+    } catch (err) {
+      console.error("[world] save failed:", err);
+    }
   }
+}
+
+/**
+ * Read saved state. An unreadable hq.json is kept aside (hq.json.corrupt-<time>) and the backup is
+ * used instead; starting empty would let the next save overwrite everything.
+ */
+function readState(file: string): Persisted | null {
+  for (const f of [file, file + ".bak"]) {
+    if (!fs.existsSync(f)) continue;
+    try {
+      const p = JSON.parse(fs.readFileSync(f, "utf8")) as Persisted;
+      if (f !== file) console.warn(`[world] ${path.basename(file)} was unreadable; recovered state from ${path.basename(f)}`);
+      return p;
+    } catch (e) {
+      if (f === file) {
+        const keep = `${file}.corrupt-${Date.now()}`;
+        fs.copyFileSync(file, keep);
+        console.error(`[world] could not read ${path.basename(file)} (kept as ${path.basename(keep)}):`, (e as Error).message);
+      }
+    }
+  }
+  return null;
 }

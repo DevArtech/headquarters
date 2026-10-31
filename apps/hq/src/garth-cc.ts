@@ -50,6 +50,8 @@ export class ClaudeCodeBrain {
     } catch (e) {
       // a stale/unknown session id makes claude exit before it starts; retry once fresh
       if (this.sessionId && (e as Error & { beforeInit?: boolean }).beforeInit) {
+        console.warn(`[garth-cc] session ${this.sessionId} could not be resumed (${(e as Error).message}); starting a fresh one`);
+        this.stop(); // the failed process is still exiting: don't reuse it
         this.sessionId = undefined;
         this.opts.onSession(undefined);
         return this.once(text, sink);
@@ -64,8 +66,11 @@ export class ClaudeCodeBrain {
   }
 
   stop() {
-    this.proc?.kill("SIGTERM");
+    const p = this.proc;
     this.proc = null;
+    if (!p) return;
+    p.removeAllListeners("close"); // a stopped process must not fail whatever turn comes next
+    p.kill("SIGTERM");
   }
 
   private once(text: string, sink: Sink): Promise<void> {
@@ -103,7 +108,7 @@ export class ClaudeCodeBrain {
     const proc = spawn(env.GARTH_CLAUDE_BIN ?? "claude", args, { cwd: this.opts.cwd, env: cleanEnv(), stdio: ["pipe", "pipe", "pipe"] });
     this.proc = proc;
     proc.stderr!.on("data", (d) => (this.stderr = (this.stderr + d.toString()).slice(-4000)));
-    readline.createInterface({ input: proc.stdout! }).on("line", (l) => this.onLine(l));
+    readline.createInterface({ input: proc.stdout! }).on("line", (l) => this.proc === proc && this.onLine(l));
     proc.on("error", (e) => this.fail(new Error(`could not start Claude Code: ${e.message}`)));
     proc.on("close", (code) => {
       if (this.proc === proc) this.proc = null;
@@ -151,8 +156,12 @@ export class ClaudeCodeBrain {
       if (said.trim()) t.sink.message(said.trim());
     } else if (j.type === "result") {
       this.current = null;
-      if (j.is_error) t.reject(new Error(String(j.result ?? j.subtype ?? "Claude Code error")));
-      else t.resolve();
+      if (j.is_error) {
+        // a stale --resume ("No conversation found") fails with a result before the session ever starts
+        const err = new Error(String(j.result ?? j.subtype ?? "Claude Code error")) as Error & { beforeInit?: boolean };
+        err.beforeInit = !t.sawInit;
+        t.reject(err);
+      } else t.resolve();
     }
   }
 }
